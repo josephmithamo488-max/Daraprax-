@@ -1,4 +1,3 @@
-
 import os
 import json
 import requests
@@ -11,6 +10,30 @@ LLM_URL = os.getenv(
     "https://api.deepseek.com/chat/completions"
 )
 LLM_KEY = os.getenv("LLM_KEY")
+
+# 1. The Curated Collection (Transparent, not fake)
+CURATED_PROBLEMS = [
+    {
+        "title": "Hotel bookings dropped 18%",
+        "status": "Illustrative example",
+        "keywords": ["hotel", "booking", "occupancy", "tourism", "guests"]
+    },
+    {
+        "title": "Restaurant wasting 30% of food inventory",
+        "status": "Illustrative example",
+        "keywords": ["restaurant", "food", "waste", "inventory", "kitchen"]
+    },
+    {
+        "title": "Patient no-shows at 25% in a clinic",
+        "status": "Illustrative example",
+        "keywords": ["clinic", "patient", "hospital", "healthcare", "no-show"]
+    },
+    {
+        "title": "Shop runs out of popular products",
+        "status": "Illustrative example",
+        "keywords": ["shop", "retail", "inventory", "stock", "products", "store"]
+    }
+]
 
 HOME_HTML = """
 <!doctype html>
@@ -51,20 +74,48 @@ RESULT_HTML = """
 body{font-family:Arial,sans-serif;max-width:700px;margin:30px auto;padding:20px;line-height:1.6;color:#18212b}
 section{padding:16px;margin:14px 0;background:#f2f5f4;border-radius:10px}
 a{color:#176b4d}
+.similar-item { border-bottom: 1px solid #ccd2da; padding-bottom: 10px; margin-bottom: 10px; }
+.similar-item:last-child { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
+.status { font-size: 0.85rem; color: #465363; font-style: italic; }
 </style>
 </head>
 <body>
 <a href="/">← Back to Daraprax</a>
 <h1>Your problem analysis</h1>
 {% if demo %}<p><strong>Demo mode:</strong> This is a preliminary suggestion, not verified research.</p>{% endif %}
+
 <section><h2>Problem, restated</h2><p>{{ result.restated }}</p></section>
 <section><h2>Relevant areas of knowledge</h2><ul>{% for item in result.domains %}<li>{{ item }}</li>{% endfor %}</ul></section>
 <section><h2>Potential people to involve</h2><ul>{% for item in result.helpers %}<li>{{ item }}</li>{% endfor %}</ul></section>
 <section><h2>Suggested next step</h2><p>{{ result.next_step }}</p></section>
+
+<section>
+    <h2>Similar challenges we've studied</h2>
+    {% if similar %}
+        {% for item in similar %}
+            <div class="similar-item">
+                <strong>{{ item.title }}</strong><br>
+                <span class="status">({{ item.status }})</span>
+            </div>
+        {% endfor %}
+    {% else %}
+        <p><strong>No close match found in our current examples.</strong> Your problem may be new to this prototype.</p>
+    {% endif %}
+</section>
+
 <p><em>These suggestions are starting points, not proof that a solution will work.</em></p>
 </body>
 </html>
 """
+
+def find_similar(problem_text):
+    """Transparent keyword matching."""
+    text_lower = problem_text.lower()
+    matches = []
+    for p in CURATED_PROBLEMS:
+        if any(kw in text_lower for kw in p["keywords"]):
+            matches.append(p)
+    return matches
 
 def analyze_problem(problem):
     if LLM_KEY:
@@ -85,8 +136,10 @@ def analyze_problem(problem):
                                 "Return only valid JSON with these keys: "
                                 "restated (string), domains (list of strings), "
                                 "helpers (list of strings), next_step (string). "
-                                "Be realistic. Do not invent evidence or claim "
-                                "that suggested outcomes are verified."
+                                "For domains, provide 3 specific fields (e.g., 'digital marketing', not 'marketing') and explain in one sentence why each is relevant. "
+                                "For helpers, provide 3 specific professional roles (e.g., 'Data Analyst', not 'expert') and explain why they are needed. "
+                                "For next_step, provide one small, measurable experiment. "
+                                "Be realistic. Do not invent evidence."
                             )
                         },
                         {"role": "user", "content": problem}
@@ -142,9 +195,12 @@ def analyze():
         return "Please enter a problem between 10 and 3000 characters.", 400
 
     result, demo = analyze_problem(problem)
+    similar_matches = find_similar(problem)
+    
     return render_template_string(
         RESULT_HTML,
         result=result,
+        similar=similar_matches,
         demo=demo
     )
 
