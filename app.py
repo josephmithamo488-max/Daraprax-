@@ -162,7 +162,58 @@ def fallback_analysis(problem):
         "first_experiment": {"action": "", "duration": "", "measure": "", "success_signal": ""}
 }
 
+
 def call_model(problem):
+    if not LLM_KEY:
+        print("Daraprax error: LLM_KEY is not configured.")
+        return fallback_analysis(problem), True
+
+    try:
+        response = requests.post(
+            LLM_URL,
+            headers={
+                "Authorization": f"Bearer {LLM_KEY}",
+                "Content-Type": "application/json",
+            },
+            json={
+                "model": LLM_MODEL,
+                "messages": [
+                    {"role": "system", "content": SYSTEM_PROMPT},
+                    {"role": "user", "content": problem},
+                ],
+                "temperature": 0.2,
+                "response_format": {"type": "json_object"},
+            },
+            timeout=45,
+        )
+
+        response.raise_for_status()
+        payload = response.json()
+        content = payload["choices"][0]["message"]["content"]
+        data = json.loads(content)
+
+        if not valid_analysis(data):
+            print("Daraprax error: AI returned JSON that failed validation.")
+            return fallback_analysis(problem), True
+
+        return data, False
+
+    except requests.HTTPError as exc:
+        status = exc.response.status_code if exc.response is not None else "unknown"
+        detail = exc.response.text[:500] if exc.response is not None else str(exc)
+        print(f"Daraprax API HTTP error {status}: {detail}")
+
+    except requests.RequestException as exc:
+        print(f"Daraprax network error: {type(exc).__name__}: {exc}")
+
+    except (ValueError, KeyError, TypeError, IndexError) as exc:
+        print(f"Daraprax response error: {type(exc).__name__}: {exc}")
+
+    except Exception as exc:
+        print(f"Daraprax unexpected error: {type(exc).__name__}: {exc}")
+
+    return fallback_analysis(problem), True
+         
     if not LLM_KEY:
         return fallback_analysis(problem), True
     try:
