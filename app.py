@@ -223,6 +223,83 @@ def call_model(problem):
         detail = exc.response.text[:500] if exc.response is not None else str(exc)
         print(f"Daraprax API HTTP error {status}: {detail}")
 
+
+def fallback_analysis(problem):
+    """Safe fallback: ask the model to be retried rather than inventing a blueprint."""
+    return {
+        "request_type": "unclear",
+        "response_message": "Daraprax could not complete the AI analysis just now. Please try again. If you retry, describe the real-world problem, the outcome you want, and any known limits such as budget or time.",
+        "needs_clarification": True,
+        "clarifying_questions": ["Could you describe the specific real-world problem and the outcome you want?"],
+        "restated": "", 
+        "desired_outcome": "", 
+        "work_packages": [], 
+        "knowledge_areas": [], 
+        "team_roles": [], 
+        "team_summary": [],
+        "total_team_estimate": "To be determined", 
+        "tools_resources": [], 
+        "constraints": [],
+        "first_experiment": {"action": "", "duration": "", "measure": "", "success_signal": ""}
+    }
+
+
+def call_model(problem):
+    if not LLM_KEY:
+        print("Daraprax error: LLM_KEY is not configured.")
+        return fallback_analysis(problem), True
+
+    try:
+        response = requests.post(
+            LLM_URL,
+            headers={
+                "Authorization": f"Bearer {LLM_KEY}",
+                "Content-Type": "application/json",
+            },
+            json={
+                "model": LLM_MODEL,
+                "messages": [
+                    {"role": "system", "content": SYSTEM_PROMPT},
+                    {"role": "user", "content": problem},
+                ],
+                "temperature": 0.2,
+                "response_format": {"type": "json_object"},
+            },
+            timeout=45,
+        )
+
+        response.raise_for_status()
+        payload = response.json()
+        content = payload["choices"][0]["message"]["content"].strip()
+
+        if content.startswith("```"):
+            content = re.sub(
+                r"\A```(?:json)?\s*|\s*```\Z",
+                "",
+                content,
+                flags=re.IGNORECASE,
+            ).strip()
+
+        try:
+            data = json.loads(content)
+        except json.JSONDecodeError:
+            match = re.search(r"\{.*\}", content, flags=re.DOTALL)
+            if not match:
+                print("Daraprax error: AI response did not contain valid JSON.")
+                return fallback_analysis(problem), True
+            data = json.loads(match.group(0))
+
+        if not valid_analysis(data):
+            print("Daraprax error: AI returned JSON that failed validation.")
+            return fallback_analysis(problem), True
+
+        return data, False
+
+    except requests.HTTPError as exc:
+        status = exc.response.status_code if exc.response is not None else "unknown"
+        detail = exc.response.text[:500] if exc.response is not None else str(exc)
+        print(f"Daraprax API HTTP error {status}: {detail}")
+
     except requests.RequestException as exc:
         print(f"Daraprax network error: {type(exc).__name__}: {exc}")
 
@@ -292,4 +369,3 @@ def feedback():
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", "5000")), debug=False)
 ```
- 
