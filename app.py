@@ -1,18 +1,16 @@
 import json
 import os
 import re
-import uuid
-
 import requests
 from flask import Flask, render_template_string, request, session
 
 app = Flask(__name__)
 app.secret_key = os.getenv("FLASK_SECRET_KEY", "daraprax-prototype-session-key-change-before-production")
 
-# Keep these names aligned with the existing Render configuration.
+# Fixed: Changed default model to a valid Groq model
 LLM_URL = os.getenv("LLM_URL", "https://api.groq.com/openai/v1/chat/completions")
 LLM_KEY = os.getenv("LLM_KEY")
-LLM_MODEL = os.getenv("LLM_MODEL", "openai/gpt-oss-20b")
+LLM_MODEL = os.getenv("LLM_MODEL", "llama-3.3-70b-versatile")
 MAX_PROBLEM_LENGTH = 3000
 
 SYSTEM_PROMPT = r"""
@@ -110,8 +108,11 @@ def valid_analysis(data):
         return False
     if data.get("request_type") not in {"project_challenge", "information_request", "employment_search", "unclear", "out_of_scope"}:
         return False
-    if not is_nonempty_string(data.get("response_message", "")):
+    
+    # FIXED: Don't require response_message if it's a project challenge
+    if data.get("request_type") != "project_challenge" and not is_nonempty_string(data.get("response_message", "")):
         return False
+        
     if not isinstance(data.get("needs_clarification"), bool):
         return False
     if not isinstance(data.get("clarifying_questions"), list) or not all(is_nonempty_string(q) for q in data["clarifying_questions"]):
@@ -156,15 +157,14 @@ def fallback_analysis(problem):
         "request_type": "unclear",
         "response_message": "Daraprax could not complete the AI analysis just now. Please try again. If you retry, describe the real-world problem, the outcome you want, and any known limits such as budget or time.",
         "needs_clarification": True,
-        "clarifying_questions": ["Could you describe the specific real-world problem and the outcome you want?"] ,
+        "clarifying_questions": ["Could you describe the specific real-world problem and the outcome you want?"],
         "restated": "", "desired_outcome": "", "work_packages": [], "knowledge_areas": [], "team_roles": [], "team_summary": [],
         "total_team_estimate": "To be determined", "tools_resources": [], "constraints": [],
         "first_experiment": {"action": "", "duration": "", "measure": "", "success_signal": ""}
-}
+    }
 
 
-def call_model(problem):
-
+# FIXED: Removed the duplicate function definition line that was here.
 def call_model(problem):
     if not LLM_KEY:
         print("Daraprax error: LLM_KEY is not configured.")
@@ -256,7 +256,6 @@ def analyze():
     if len(problem) < 10 or len(problem) > MAX_PROBLEM_LENGTH:
         return f"Please enter a description between 10 and {MAX_PROBLEM_LENGTH} characters.", 400
     result, demo = call_model(problem)
-    # Preserve the original problem only for this browser session's follow-up.
     session["daraprax_original_problem"] = problem
     return render_template_string(RESULT_HTML, result=result, demo=demo, original_problem=problem, type_title=classify_title(result["request_type"]), brand_mark=BRAND_MARK)
 
@@ -275,7 +274,6 @@ def continue_analysis():
     if additions:
         combined += "\n\nUser-provided clarifications (treat as facts supplied by the user, not verified facts):\n" + "\n".join(additions)
     result, demo = call_model(combined)
-    # If essential information remains missing, the model may ask another focused set of questions.
     return render_template_string(RESULT_HTML, result=result, demo=demo, original_problem=combined, type_title=classify_title(result["request_type"]), brand_mark=BRAND_MARK)
 
 
@@ -293,4 +291,5 @@ def feedback():
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", "5000")), debug=False)
+```
  
