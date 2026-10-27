@@ -7,7 +7,6 @@ from flask import Flask, render_template_string, request, session
 app = Flask(__name__)
 app.secret_key = os.getenv("FLASK_SECRET_KEY", "daraprax-prototype-session-key-change-before-production")
 
-# Fixed: Changed default model to a valid Groq model
 LLM_URL = os.getenv("LLM_URL", "https://api.groq.com/openai/v1/chat/completions")
 LLM_KEY = os.getenv("LLM_KEY")
 LLM_MODEL = os.getenv("LLM_MODEL", "llama-3.3-70b-versatile")
@@ -98,21 +97,16 @@ RESULT_HTML = r"""<!doctype html><html lang="en"><head><meta charset="utf-8"><me
 
 FEEDBACK_HTML = r"""<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Daraprax | Feedback preview</title><style>*{box-sizing:border-box}body{font-family:Arial,sans-serif;max-width:700px;margin:0 auto;padding:24px 18px;line-height:1.6;color:#18212b}h1{font-size:1.8rem}section{background:#f2f5f4;border-radius:10px;padding:16px;margin:14px 0}button{width:100%;padding:13px;margin-top:12px;background:#176b4d;color:white;border:0;border-radius:9px;font-size:1rem;font-weight:bold}p{overflow-wrap:anywhere}</style></head><body><a href="/">← Back to Daraprax</a><h1>Feedback preview</h1><section><p><strong>Selected response:</strong> {{ decision_label }}</p><p><strong>Problem:</strong> {{ problem }}</p><p><strong>Blueprint summary:</strong> {{ restated }}</p><p><strong>Your comment:</strong> {{ feedback or "No additional comment provided." }}</p></section><p>This is only a preview. Nothing has been saved or sent.</p><form method="get" action="/"><button type="submit">Return to Daraprax</button></form></body></html>"""
 
-
 def is_nonempty_string(value):
     return isinstance(value, str) and bool(value.strip())
-
 
 def valid_analysis(data):
     if not isinstance(data, dict):
         return False
     if data.get("request_type") not in {"project_challenge", "information_request", "employment_search", "unclear", "out_of_scope"}:
         return False
-    
-    # FIXED: Don't require response_message if it's a project challenge
     if data.get("request_type") != "project_challenge" and not is_nonempty_string(data.get("response_message", "")):
         return False
-        
     if not isinstance(data.get("needs_clarification"), bool):
         return False
     if not isinstance(data.get("clarifying_questions"), list) or not all(is_nonempty_string(q) for q in data["clarifying_questions"]):
@@ -150,82 +144,7 @@ def valid_analysis(data):
         return False
     return True
 
-
 def fallback_analysis(problem):
-    """Safe fallback: ask the model to be retried rather than inventing a blueprint."""
-    return {
-        "request_type": "unclear",
-        "response_message": "Daraprax could not complete the AI analysis just now. Please try again. If you retry, describe the real-world problem, the outcome you want, and any known limits such as budget or time.",
-        "needs_clarification": True,
-        "clarifying_questions": ["Could you describe the specific real-world problem and the outcome you want?"],
-        "restated": "", "desired_outcome": "", "work_packages": [], "knowledge_areas": [], "team_roles": [], "team_summary": [],
-        "total_team_estimate": "To be determined", "tools_resources": [], "constraints": [],
-        "first_experiment": {"action": "", "duration": "", "measure": "", "success_signal": ""}
-    }
-
-
-# FIXED: Removed the duplicate function definition line that was here.
-def call_model(problem):
-    if not LLM_KEY:
-        print("Daraprax error: LLM_KEY is not configured.")
-        return fallback_analysis(problem), True
-
-    try:
-        response = requests.post(
-            LLM_URL,
-            headers={
-                "Authorization": f"Bearer {LLM_KEY}",
-                "Content-Type": "application/json",
-            },
-            json={
-                "model": LLM_MODEL,
-                "messages": [
-                    {"role": "system", "content": SYSTEM_PROMPT},
-                    {"role": "user", "content": problem},
-                ],
-                "temperature": 0.2,
-                "response_format": {"type": "json_object"},
-            },
-            timeout=45,
-        )
-
-        response.raise_for_status()
-        payload = response.json()
-        content = payload["choices"][0]["message"]["content"].strip()
-
-        # Remove Markdown code fences if the model includes them.
-        if content.startswith("```"):
-            content = re.sub(
-                r"\A```(?:json)?\s*|\s*```\Z",
-                "",
-                content,
-                flags=re.IGNORECASE,
-            ).strip()
-
-        try:
-            data = json.loads(content)
-        except json.JSONDecodeError:
-            # Recover a JSON object if extra text surrounds it.
-            match = re.search(r"\{.*\}", content, flags=re.DOTALL)
-            if not match:
-                print("Daraprax error: AI response did not contain valid JSON.")
-                return fallback_analysis(problem), True
-            data = json.loads(match.group(0))
-
-        if not valid_analysis(data):
-            print("Daraprax error: AI returned JSON that failed validation.")
-            return fallback_analysis(problem), True
-
-        return data, False
-
-    except requests.HTTPError as exc:
-        status = exc.response.status_code if exc.response is not None else "unknown"
-        detail = exc.response.text[:500] if exc.response is not None else str(exc)
-        print(f"Daraprax API HTTP error {status}: {detail}")
-
-
-def fallback_analysis(problem):
-    """Safe fallback: ask the model to be retried rather than inventing a blueprint."""
     return {
         "request_type": "unclear",
         "response_message": "Daraprax could not complete the AI analysis just now. Please try again. If you retry, describe the real-world problem, the outcome you want, and any known limits such as budget or time.",
@@ -242,7 +161,6 @@ def fallback_analysis(problem):
         "constraints": [],
         "first_experiment": {"action": "", "duration": "", "measure": "", "success_signal": ""}
     }
-
 
 def call_model(problem):
     if not LLM_KEY:
@@ -310,7 +228,6 @@ def call_model(problem):
         print(f"Daraprax unexpected error: {type(exc).__name__}: {exc}")
 
     return fallback_analysis(problem), True
-         
 
 def classify_title(request_type):
     return {
@@ -321,11 +238,9 @@ def classify_title(request_type):
         "project_challenge": "Project challenge",
     }.get(request_type, "Next step")
 
-
 @app.route("/", methods=["GET"])
 def home():
     return render_template_string(HOME_HTML, problem="", brand_mark=BRAND_MARK)
-
 
 @app.route("/analyze", methods=["POST"])
 def analyze():
@@ -335,7 +250,6 @@ def analyze():
     result, demo = call_model(problem)
     session["daraprax_original_problem"] = problem
     return render_template_string(RESULT_HTML, result=result, demo=demo, original_problem=problem, type_title=classify_title(result["request_type"]), brand_mark=BRAND_MARK)
-
 
 @app.route("/continue", methods=["POST"])
 def continue_analysis():
@@ -353,7 +267,6 @@ def continue_analysis():
     result, demo = call_model(combined)
     return render_template_string(RESULT_HTML, result=result, demo=demo, original_problem=combined, type_title=classify_title(result["request_type"]), brand_mark=BRAND_MARK)
 
-
 @app.route("/feedback", methods=["POST"])
 def feedback():
     problem = request.form.get("problem", "").strip()[:MAX_PROBLEM_LENGTH]
@@ -365,7 +278,5 @@ def feedback():
         return "Please return to the analysis and choose a valid response.", 400
     return render_template_string(FEEDBACK_HTML, problem=problem, restated=restated, feedback=feedback_text, decision_label=labels[decision])
 
-
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", "5000")), debug=False)
-```
