@@ -164,6 +164,8 @@ def fallback_analysis(problem):
 
 
 def call_model(problem):
+
+def call_model(problem):
     if not LLM_KEY:
         print("Daraprax error: LLM_KEY is not configured.")
         return fallback_analysis(problem), True
@@ -188,14 +190,22 @@ def call_model(problem):
         )
 
         response.raise_for_status()
-content = payload["choices"][0]["message"]["content"].strip()
+        payload = response.json()
+        content = payload["choices"][0]["message"]["content"].strip()
 
-if content.startswith("```"):
-    content = re.sub(r"^```(?:json)?\s*|\s*```$", "", content, flags=re.IGNORECASE).strip()
+        # Remove Markdown code fences if the model includes them.
+        if content.startswith("```"):
+            content = re.sub(
+                r"\A```(?:json)?\s*|\s*```\Z",
+                "",
+                content,
+                flags=re.IGNORECASE,
+            ).strip()
 
         try:
             data = json.loads(content)
         except json.JSONDecodeError:
+            # Recover a JSON object if extra text surrounds it.
             match = re.search(r"\{.*\}", content, flags=re.DOTALL)
             if not match:
                 print("Daraprax error: AI response did not contain valid JSON.")
@@ -207,6 +217,22 @@ if content.startswith("```"):
             return fallback_analysis(problem), True
 
         return data, False
+
+    except requests.HTTPError as exc:
+        status = exc.response.status_code if exc.response is not None else "unknown"
+        detail = exc.response.text[:500] if exc.response is not None else str(exc)
+        print(f"Daraprax API HTTP error {status}: {detail}")
+
+    except requests.RequestException as exc:
+        print(f"Daraprax network error: {type(exc).__name__}: {exc}")
+
+    except (ValueError, KeyError, TypeError, IndexError) as exc:
+        print(f"Daraprax response error: {type(exc).__name__}: {exc}")
+
+    except Exception as exc:
+        print(f"Daraprax unexpected error: {type(exc).__name__}: {exc}")
+
+    return fallback_analysis(problem), True
          
 
 def classify_title(request_type):
