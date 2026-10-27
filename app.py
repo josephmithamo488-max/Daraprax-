@@ -7,9 +7,10 @@ from flask import Flask, render_template_string, request, session
 app = Flask(__name__)
 app.secret_key = os.getenv("FLASK_SECRET_KEY", "daraprax-prototype-session-key-change-before-production")
 
+# Updated to Groq's current default model
 LLM_URL = os.getenv("LLM_URL", "https://api.groq.com/openai/v1/chat/completions")
 LLM_KEY = os.getenv("LLM_KEY")
-LLM_MODEL = os.getenv("LLM_MODEL", "llama-3.3-70b-versatile")
+LLM_MODEL = os.getenv("LLM_MODEL", "openai/gpt-oss-120b")
 MAX_PROBLEM_LENGTH = 3000
 
 SYSTEM_PROMPT = r"""
@@ -204,11 +205,13 @@ def call_model(problem):
             match = re.search(r"\{.*\}", content, flags=re.DOTALL)
             if not match:
                 print("Daraprax error: AI response did not contain valid JSON.")
+                print(f"DEBUG - RAW CONTENT: {content}")
                 return fallback_analysis(problem), True
             data = json.loads(match.group(0))
 
         if not valid_analysis(data):
             print("Daraprax error: AI returned JSON that failed validation.")
+            print(f"DEBUG - WHAT AI SENT: {data}")
             return fallback_analysis(problem), True
 
         return data, False
