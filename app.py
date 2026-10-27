@@ -188,9 +188,19 @@ def call_model(problem):
         )
 
         response.raise_for_status()
-        payload = response.json()
-        content = payload["choices"][0]["message"]["content"]
-        data = json.loads(content)
+content = payload["choices"][0]["message"]["content"].strip()
+
+if content.startswith("```"):
+    content = re.sub(r"^```(?:json)?\s*|\s*```$", "", content, flags=re.IGNORECASE).strip()
+
+try:
+    data = json.loads(content)
+except json.JSONDecodeError:
+    match = re.search(r"\{.*\}", content, flags=re.DOTALL)
+    if not match:
+        print("Daraprax error: AI response did not contain valid JSON.")
+        return fallback_analysis(problem), True
+    data = json.loads(match.group(0))
 
         if not valid_analysis(data):
             print("Daraprax error: AI returned JSON that failed validation.")
