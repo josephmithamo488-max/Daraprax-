@@ -214,25 +214,6 @@ def call_model(problem):
 
     return fallback_analysis(problem), True
          
-    if not LLM_KEY:
-        return fallback_analysis(problem), True
-    try:
-        response = requests.post(
-            LLM_URL,
-            headers={"Authorization": f"Bearer {LLM_KEY}", "Content-Type": "application/json"},
-            json={"model": LLM_MODEL,
-                  "messages":[{"role":"system","content":SYSTEM_PROMPT},{"role":"user","content":problem}],
-                  "temperature":0.2,"response_format":{"type":"json_object"}},
-            timeout=45,
-        )
-        response.raise_for_status()
-        data = json.loads(response.json()["choices"][0]["message"]["content"])
-        if valid_analysis(data):
-            return data, False
-    except (requests.RequestException, ValueError, KeyError, TypeError):
-        pass
-    return fallback_analysis(problem), True
-
 
 def classify_title(request_type):
     return {
