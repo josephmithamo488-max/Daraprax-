@@ -256,6 +256,7 @@ if (localStorage.getItem('theme') === 'dark') {
 </script>
 </body></html>
 """
+
 FEEDBACK_HTML = r"""<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Daraprax | Feedback preview</title><style>*{box-sizing:border-box}body{font-family:Arial,sans-serif;max-width:700px;margin:0 auto;padding:24px 18px;line-height:1.6;color:#18212b}h1{font-size:1.8rem}section{background:#f2f5f4;border-radius:10px;padding:16px;margin:14px 0}button{width:100%;padding:13px;margin-top:12px;background:#176b4d;color:white;border:0;border-radius:9px;font-size:1rem;font-weight:bold}p{overflow-wrap:anywhere}</style></head><body><a href="/">← Back to Daraprax</a><h1>Feedback preview</h1><section><p><strong>Selected response:</strong> {{ decision_label }}</p><p><strong>Problem:</strong> {{ problem }}</p><p><strong>Blueprint summary:</strong> {{ restated }}</p><p><strong>Your comment:</strong> {{ feedback or "No additional comment provided." }}</p></section><p>This is only a preview. Nothing has been saved or sent.</p><form method="get" action="/"><button type="submit">Return to Daraprax</button></form></body></html>"""
 
 def is_nonempty_string(value):
