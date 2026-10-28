@@ -77,25 +77,185 @@ HOME_HTML = r"""<!doctype html><html lang="en"><head>
 <div class="feature-grid"><div class="feature"><strong>🎯 Understand the problem</strong><span>Clarify the real challenge and desired outcome.</span></div><div class="feature"><strong>🛠️ Map the work</strong><span>Break the project into practical tasks.</span></div><div class="feature"><strong>👥 Identify capabilities</strong><span>Consider professionals, technicians and labour.</span></div><div class="feature"><strong>📊 Learn by testing</strong><span>Choose a measurable first experiment.</span></div></div>
 <footer>Early prototype. Suggestions are preliminary, not verified research or a confirmed team. Check important decisions against real-world evidence.</footer></body></html>"""
 
-RESULT_HTML = r"""<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="theme-color" content="#176b4d"><title>Daraprax | Your next step</title>
-<style>:root{--navy:#10233f;--blue:#2563eb;--green:#15803d;--amber:#b45309;--purple:#7c3aed;--rose:#be185d;--red:#b91c1c;--ink:#172033;--muted:#526176;--line:#dbe3ee;--paper:#f5f8fc}*{box-sizing:border-box}body{font-family:system-ui,-apple-system,Segoe UI,Arial,sans-serif;max-width:820px;margin:0 auto;padding:22px 16px;line-height:1.6;color:var(--ink);background:var(--paper)}a{color:var(--blue)}h1{font-size:clamp(1.65rem,5vw,2rem);line-height:1.2;letter-spacing:-.03em}h2{font-size:1.12rem;margin-top:0}h3{font-size:1rem;margin-bottom:4px}section{padding:17px;margin:14px 0;background:#fff;border:1px solid var(--line);border-left:5px solid var(--blue);border-radius:12px;overflow-wrap:anywhere;box-shadow:0 4px 16px #10233f08}section:nth-of-type(3n+1){border-left-color:var(--green)}section:nth-of-type(3n+2){border-left-color:var(--amber)}section:nth-of-type(3n){border-left-color:var(--purple)}li{margin-bottom:8px}.card{border-top:1px solid var(--line);padding:12px 0}.card:first-child{border-top:0;padding-top:0}.muted,.small{color:var(--muted);font-size:.92rem}.notice{padding:12px 14px;background:#fff7df;border:1px solid #f4d58b;border-radius:8px;color:#704b0b}label{display:block;margin-top:12px;font-weight:750}input[type=text],textarea,select{display:block;width:100%;margin-top:5px;padding:11px;border:1px solid #c7d2e2;border-radius:9px;background:#fff;color:var(--ink);font:inherit}textarea{min-height:85px}button{width:100%;padding:13px;margin-top:12px;background:var(--blue);color:white;border:0;border-radius:9px;font-size:1rem;font-weight:750;cursor:pointer}button.secondary{background:#e7efeb;color:#15563f}.table-scroll{width:100%;max-width:100%;overflow-x:auto;overscroll-behavior-x:contain;border-radius:8px;-webkit-overflow-scrolling:touch}table{width:100%;min-width:650px;border-collapse:collapse;table-layout:auto;font-size:.94rem}th,td{text-align:left;padding:11px 10px;border-bottom:1px solid #d7dfdc;vertical-align:top;overflow-wrap:break-word}th{background:#ede9fe;color:#4c1d95;white-space:nowrap}tbody tr:nth-child(even){background:#f8fafc}tbody td:first-child{font-weight:700}td:nth-child(1){min-width:135px}td:nth-child(2){min-width:190px}td:nth-child(3){min-width:130px}td:nth-child(4){min-width:220px}.table-hint{margin:6px 0 10px;color:#465363;font-size:.85rem}
-.flow-diagram{display:flex;align-items:center;justify-content:center;gap:8px;flex-wrap:wrap}.flow-diagram div{background:#eaf2ff;border:1px solid #c7dafe;color:#1d4ed8;border-radius:10px;padding:10px 12px;font-weight:750;text-align:center}.flow-diagram span{color:#64748b;font-weight:800}@media(max-width:520px){body{padding:16px 12px}.flow-diagram{align-items:stretch}.flow-diagram div{flex:1 1 42%}.flow-diagram span{display:none}section{padding:14px}}.brand{display:flex;align-items:center;gap:10px;text-decoration:none;color:var(--navy);margin-bottom:14px}.brand-mark{width:44px;height:44px;flex:none}.brand strong{display:block;font-size:1.4rem;letter-spacing:-.04em;line-height:1.15}.brand small{display:block;color:var(--green);font-weight:650}</style></head><body>{{ brand_mark|safe }}<a href="/">← Back to Daraprax</a><h1>🧭 Your next step</h1>
-{% if demo %}<p class="notice"><strong>Fallback mode:</strong> The AI service did not return a usable analysis. This is not a personalized AI response. Try again later.</p>{% else %}<p class="muted">Preliminary AI-assisted guidance. Review it against your context and real-world evidence.</p>{% endif %}
-{% if result.request_type != 'project_challenge' %}<section><h2>{{ type_title }}</h2><p>{{ result.response_message or 'Please clarify what you would like help with.' }}</p>{% if result.clarifying_questions %}<h3>Could you clarify?</h3><ul>{% for q in result.clarifying_questions %}<li>{{ q }}</li>{% endfor %}</ul>{% endif %}</section>
-{% else %}
-{% if result.needs_clarification %}<section class="notice"><h2>Let's clarify the challenge first</h2><p>Some important details could change the work plan or team size. Answer what you can; you can leave unknown answers blank.</p><form method="post" action="/continue"><input type="hidden" name="problem" value="{{ original_problem }}">{% for q in result.clarifying_questions %}<label for="answer{{ loop.index }}">{{ loop.index }}. {{ q }}</label><input type="text" id="answer{{ loop.index }}" name="answer{{ loop.index }}" maxlength="500" placeholder="Your answer, or leave blank if unknown">{% endfor %}<button type="submit">Continue with these details</button></form></section>{% endif %}
-<section><h2>🎯 1. Core challenge</h2><p>{{ result.restated }}</p><h3>Desired outcome</h3><p>{{ result.desired_outcome }}</p></section>
-{% if result.work_packages %}<section><h2>🔄 How the work fits together</h2><p class="small">Conceptual workflow only; the sequence should be checked against the actual project.</p><div class="flow-diagram" role="img" aria-label="Conceptual workflow: understand, plan, resource, test"><div>🎯 Understand</div><span>→</span><div>🛠️ Plan the work</div><span>→</span><div>👥 Organize resources</div><span>→</span><div>🧪 Test and learn</div></div></section><section><h2>🛠️ 2. Work packages and tasks</h2>{% for item in result.work_packages %}<div class="card"><h3>{{ item.name }}</h3><ul>{% for task in item.tasks %}<li>{{ task }}</li>{% endfor %}</ul><p><strong>Skills needed:</strong> {{ item.skills_needed|join(', ') }}</p><p><strong>Dependencies:</strong> {{ item.dependencies }}</p><p class="small"><strong>Staffing note:</strong> {{ item.staffing_note }}</p></div>{% endfor %}</section>{% endif %}
-<section><h2>🧠 3. Relevant knowledge areas</h2>{% for item in result.knowledge_areas %}<div class="card"><strong>{{ item.name }}</strong><p>{{ item.reason }}</p></div>{% endfor %}</section>
-<section><h2>👥 4. Potential team and responsibilities</h2><p class="small">These are proposed contributions, not confirmed people. Staffing may change by project phase. Specialist and hazardous work requires appropriately qualified people.</p>{% for item in result.team_roles %}<div class="card"><h3>{{ item.role }}</h3><p><strong>Category:</strong> {{ item.category }} · <strong>Phase:</strong> {{ item.phase }}</p><p><strong>Suggested staffing:</strong> {{ item.people }}</p><p>{{ item.why_needed }}</p><p class="small"><strong>Estimate confidence:</strong> {{ item.estimate_confidence }}</p><strong>Possible responsibilities</strong><ul>{% for task in item.responsibilities %}<li>{{ task }}</li>{% endfor %}</ul></div>{% endfor %}</section>
-<section><h2>📊 5. Team summary</h2><p class="table-hint">On a phone? Swipe the table sideways to read all columns.</p><div class="table-scroll"><table><thead><tr><th>Category</th><th>Roles</th><th>Headcount</th><th>Basis / limitation</th></tr></thead><tbody>{% for item in result.team_summary %}<tr><td>{{ item.category }}</td><td>{{ item.roles }}</td><td>{{ item.headcount }}</td><td>{{ item.basis }}</td></tr>{% endfor %}</tbody></table></div><p><strong>Overall unique-person estimate:</strong> {{ result.total_team_estimate }}</p><p class="small">Role assignments are not necessarily unique people. People may cover multiple roles, and staffing can vary across phases. Totals should only be treated as estimates when the project scope supports them.</p></section>
-<section><h2>🧰 6. Tools and resources</h2>{% for item in result.tools_resources %}<div class="card"><strong>{{ item.name }}</strong><p>{{ item.purpose }}</p><p class="small"><strong>Access note:</strong> {{ item.access_note }}</p></div>{% endfor %}</section>
-<section><h2>⚠️ 7. Constraints and assumptions</h2>{% for item in result.constraints %}<div class="card"><strong>{{ item.item }}</strong><p><strong>Status:</strong> {{ item.status }}</p><p>{{ item.impact }}</p></div>{% endfor %}</section>
-<section><h2>🧪 8. First measurable experiment</h2><p><strong>Action:</strong> {{ result.first_experiment.action }}</p><p><strong>Duration:</strong> {{ result.first_experiment.duration }}</p><p><strong>What to measure:</strong> {{ result.first_experiment.measure }}</p><p><strong>Review signal:</strong> {{ result.first_experiment.success_signal }}</p></section>
-<section><h2>What do you think of this guidance?</h2><p class="small">This prototype prepares a feedback preview only. It does not save or send your response.</p><form method="post" action="/feedback"><input type="hidden" name="problem" value="{{ original_problem }}"><input type="hidden" name="restated" value="{{ result.restated }}"><label for="decision">Your response</label><select id="decision" name="decision" required><option value="">Choose one</option><option value="interested">I'm interested in exploring a team for this</option><option value="clarify">I need to clarify the problem first</option><option value="unsuitable">This guidance is not suitable</option></select><label for="feedback">Optional explanation</label><textarea id="feedback" name="feedback" maxlength="1200" placeholder="What is useful, missing, unrealistic or unclear?"></textarea><button type="submit">Prepare my feedback</button></form></section>
-{% endif %}
-<p class="small"><em>Daraprax helps structure a problem; it does not verify that the analysis is correct, guarantee results, or confirm that people, tools or funding are available. Validate important decisions with evidence and appropriate professional advice.</em></p><form method="get" action="/"><button class="secondary" type="submit">Analyze another problem</button></form></body></html>"""
+RESULT_HTML = """
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Daraprax | Your Blueprint</title>
+""" + BASE_CSS + """
+<style>
+section { background: var(--card-bg); padding: 24px; border-radius: 16px; border: 1px solid var(--border-color); margin-bottom: 20px; box-shadow: var(--shadow); border-left: 6px solid var(--primary); }
+section:nth-child(even) { border-left-color: var(--green); }
+.card { border-bottom: 1px solid var(--border-color); padding: 16px 0; }
+.card:last-child { border-bottom: none; }
+.notice { background: #fffbeb; color: #92400e; padding: 16px; border-radius: 12px; border: 1px solid #fcd34d; margin-bottom: 20px; }
+[data-theme="dark"] .notice { background: #422006; color: #fcd34d; border-color: #b45309; }
 
+/* Accordion Styling for deep data */
+details { background: var(--bg-color); border: 1px solid var(--border-color); border-radius: 12px; padding: 16px; margin-bottom: 16px; }
+summary { font-weight: 600; font-size: 1.1rem; cursor: pointer; list-style: none; display: flex; align-items: center; gap: 8px; }
+summary::-webkit-details-marker { display: none; }
+summary::before { content: "▶"; font-size: 0.8rem; transition: transform 0.2s; color: var(--primary); }
+details[open] summary::before { transform: rotate(90deg); }
+details[open] { padding-bottom: 24px; }
+
+.action-buttons { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-top: 30px; }
+@media (max-width: 600px) { .action-buttons { grid-template-columns: 1fr; } }
+.btn-primary { background: var(--primary); color: white; border: none; padding: 16px; font-size: 1rem; text-align: center; border-radius: 10px; font-weight: 600; cursor: pointer; }
+.btn-secondary { background: var(--card-bg); color: var(--text-main); border: 1px solid var(--border-color); padding: 16px; font-size: 1rem; text-align: center; border-radius: 10px; font-weight: 600; cursor: pointer; }
+.btn-secondary:hover { background: var(--bg-color); }
+.table-scroll { overflow-x: auto; margin-top: 10px; }
+table { width: 100%; border-collapse: collapse; min-width: 600px; }
+th, td { padding: 12px; text-align: left; border-bottom: 1px solid var(--border-color); font-size: 0.95rem; }
+th { background: var(--card-bg); font-weight: 600; }
+</style>
+</head>
+<body data-theme="light">
+<nav class="nav"><a href="/">← Back to Daraprax</a><button class="theme-toggle" onclick="toggleTheme()">🌓</button></nav>
+<h1 style="margin-bottom:20px;">🧭 Your Blueprint</h1>
+
+{% if demo %}<div class="notice"><strong>Fallback mode:</strong> The AI service did not return a usable analysis. Try again later.</div>{% endif %}
+
+{% if result.request_type != 'project_challenge' %}
+<section>
+    <h2>{{ type_title }}</h2>
+    <p style="margin-top:10px;">{{ result.response_message }}</p>
+</section>
+{% else %}
+
+{% if result.needs_clarification %}
+<section class="notice">
+    <h2>Let's clarify the challenge first</h2>
+    <p>Some important details could change the work plan. Answer what you can.</p>
+    <form method="post" action="/continue" style="margin-top:15px;">
+        <input type="hidden" name="problem" value="{{ original_problem }}">
+        {% for q in result.clarifying_questions %}
+        <label style="display:block; margin-bottom:10px; font-weight:600;">{{ loop.index }}. {{ q }}</label>
+        <input type="text" name="answer{{ loop.index }}" style="width:100%; padding:10px; border-radius:8px; border:1px solid var(--border-color); margin-bottom:15px; background:var(--bg-color); color:var(--text-main);">
+        {% endfor %}
+        <button type="submit" class="btn-primary" style="width:100%;">Continue with details</button>
+    </form>
+</section>
+{% endif %}
+
+<section>
+    <h2>🎯 1. Core Challenge</h2>
+    <p style="margin-top:10px;">{{ result.restated }}</p>
+    <h3 style="margin-top:15px; font-size:1rem;">Desired Outcome</h3>
+    <p style="color:var(--text-muted);">{{ result.desired_outcome }}</p>
+</section>
+
+<section>
+    <h2>🛠️ 2. Work Packages</h2>
+    {% for item in result.work_packages %}
+    <div class="card">
+        <h3>{{ item.name }}</h3>
+        <ul style="margin: 10px 0 10px 20px;">{% for task in item.tasks %}<li>{{ task }}</li>{% endfor %}</ul>
+        <p style="font-size:0.9rem;"><strong>Skills:</strong> {{ item.skills_needed|join(', ') }}</p>
+        <p style="font-size:0.9rem; color:var(--text-muted);"><strong>Note:</strong> {{ item.staffing_note }}</p>
+    </div>
+    {% endfor %}
+</section>
+
+<section>
+    <h2>🧠 3. Relevant Knowledge Areas</h2>
+    <div style="display:flex; flex-wrap:wrap; gap:10px; margin-top:15px;">
+        {% for item in result.knowledge_areas %}
+        <div style="background:var(--bg-color); padding:10px 15px; border-radius:20px; border:1px solid var(--border-color); font-size:0.9rem;">
+            <strong>{{ item.name }}</strong>
+        </div>
+        {% endfor %}
+    </div>
+</section>
+
+<section>
+    <h2>👥 4. Potential Team</h2>
+    {% for item in result.team_roles %}
+    <div class="card">
+        <h3>{{ item.role }}</h3>
+        <p style="font-size:0.9rem;"><strong>Category:</strong> {{ item.category }} · <strong>Phase:</strong> {{ item.phase }} · <strong>Staffing:</strong> {{ item.people }}</p>
+        <p style="margin-top:5px;">{{ item.why_needed }}</p>
+    </div>
+    {% endfor %}
+</section>
+
+<section>
+    <h2>📊 5. Team Summary & Details</h2>
+    <p style="font-size:0.9rem; color:var(--text-muted); margin-bottom:15px;">Overall unique-person estimate: <strong>{{ result.total_team_estimate }}</strong></p>
+    
+    <div class="table-scroll">
+        <table>
+            <thead>
+                <tr><th>Category</th><th>Roles</th><th>Headcount</th><th>Basis</th></tr>
+            </thead>
+            <tbody>
+                {% for item in result.team_summary %}
+                <tr><td>{{ item.category }}</td><td>{{ item.roles }}</td><td>{{ item.headcount }}</td><td>{{ item.basis }}</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</section>
+
+<section>
+    <h2>🧰 6. Tools, Constraints & Details</h2>
+    <p style="margin-bottom:15px; color:var(--text-muted); font-size:0.9rem;">Click to expand the deeper structural details.</p>
+    
+    <details>
+        <summary>🔧 Tools & Resources</summary>
+        <div style="margin-top:15px;">
+            {% for item in result.tools_resources %}
+            <div class="card">
+                <strong>{{ item.name }}</strong>
+                <p style="font-size:0.9rem;">{{ item.purpose }}</p>
+                <p style="font-size:0.85rem; color:var(--text-muted);"><em>{{ item.access_note }}</em></p>
+            </div>
+            {% endfor %}
+        </div>
+    </details>
+
+    <details>
+        <summary>⚠️ Constraints & Assumptions</summary>
+        <div style="margin-top:15px;">
+            {% for item in result.constraints %}
+            <div class="card">
+                <strong>{{ item.item }}</strong> <span style="font-size:0.8rem; background:var(--primary); color:white; padding:2px 8px; border-radius:10px; margin-left:8px;">{{ item.status }}</span>
+                <p style="font-size:0.9rem; margin-top:5px;">{{ item.impact }}</p>
+            </div>
+            {% endfor %}
+        </div>
+    </details>
+</section>
+
+<section>
+    <h2>🧪 7. First Measurable Experiment</h2>
+    <p style="margin-top:10px;"><strong>Action:</strong> {{ result.first_experiment.action }}</p>
+    <p><strong>Duration:</strong> {{ result.first_experiment.duration }}</p>
+    <p><strong>Measure:</strong> {{ result.first_experiment.measure }}</p>
+    <p><strong>Success Signal:</strong> {{ result.first_experiment.success_signal }}</p>
+</section>
+
+<div class="action-buttons">
+    <button class="btn-primary" onclick="alert('Database integration coming next. This will publish the challenge to the solver network.')">🚀 Publish as Live Challenge</button>
+    <button class="btn-secondary" onclick="window.location.href='/'">Analyze another problem</button>
+</div>
+{% endif %}
+
+<script>
+function toggleTheme() {
+    const body = document.body;
+    const current = body.getAttribute('data-theme');
+    const next = current === 'light' ? 'dark' : 'light';
+    body.setAttribute('data-theme', next);
+    localStorage.setItem('theme', next);
+}
+if (localStorage.getItem('theme') === 'dark') {
+    document.body.setAttribute('data-theme', 'dark');
+}
+</script>
+</body></html>
+"""
 FEEDBACK_HTML = r"""<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Daraprax | Feedback preview</title><style>*{box-sizing:border-box}body{font-family:Arial,sans-serif;max-width:700px;margin:0 auto;padding:24px 18px;line-height:1.6;color:#18212b}h1{font-size:1.8rem}section{background:#f2f5f4;border-radius:10px;padding:16px;margin:14px 0}button{width:100%;padding:13px;margin-top:12px;background:#176b4d;color:white;border:0;border-radius:9px;font-size:1rem;font-weight:bold}p{overflow-wrap:anywhere}</style></head><body><a href="/">← Back to Daraprax</a><h1>Feedback preview</h1><section><p><strong>Selected response:</strong> {{ decision_label }}</p><p><strong>Problem:</strong> {{ problem }}</p><p><strong>Blueprint summary:</strong> {{ restated }}</p><p><strong>Your comment:</strong> {{ feedback or "No additional comment provided." }}</p></section><p>This is only a preview. Nothing has been saved or sent.</p><form method="get" action="/"><button type="submit">Return to Daraprax</button></form></body></html>"""
 
 def is_nonempty_string(value):
