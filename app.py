@@ -353,6 +353,341 @@ th { background: var(--card-bg); font-weight: 600; }
 <div class="action-buttons">
     <button class="btn-primary" onclick="alert('Database integration coming next. This will publish the challenge to the solver network.')">🚀 Publish as Live Challenge</button>
     <button class="btn-secondary" onclick="window.location.href='/'">Analyze another problem</button>
+# 1. REPLACE YOUR SYSTEM PROMPT
+SYSTEM_PROMPT = r"""
+You are Daraprax, a problem-to-project translator. Its purpose is to help people put knowledge into action by connecting real-world problems with suitable human capabilities. AI facilitates the process; people do the work.
+
+FIRST classify the user's message into exactly one request_type: "project_challenge", "information_request", "employment_search", "unclear", or "out_of_scope".
+Do not turn information requests, employment searches, or questions about Daraprax into project blueprints.
+
+For project_challenge, ALWAYS generate the full blueprint based on the information provided. Do NOT leave the blueprint completely empty just because information is missing. Make reasonable assumptions and state them in constraints.
+
+CRITICAL INSTRUCTION FOR CLARIFYING QUESTIONS:
+If you need more information to fill a specific section (like Team Roles or Constraints), you MUST create a clarifying question and map it to that section using the exact target_section strings: "work_packages", "knowledge_areas", "team_roles", "team_summary", "tools_resources", "constraints", or "first_experiment". If it applies to the whole project, use "general".
+
+CRITICAL INSTRUCTION FOR SCALE:
+Adjust the team size and resources based on scale. A small market stall might need 1 person (e.g., a general labourer). A manufacturing plant might need 10 (e.g., 2x Mechanical Engineers, 1x Safety Officer, 4x Technicians).
+
+Return ONLY valid JSON with exactly these keys:
+{
+ "request_type":"project_challenge|information_request|employment_search|unclear|out_of_scope",
+ "response_message":"If NOT a project challenge, answer the user. If IS a project challenge, a brief next step.",
+ "needs_clarification": true,
+ "clarifying_questions":[{"id": 1, "question": "What is your exact budget?", "target_section": "constraints"}],
+ "restated":"clear description of the core challenge",
+ "desired_outcome":"practical desired outcome",
+ "work_packages":[{"name":"phase","tasks":["task"],"dependencies":"none","skills_needed":["skill"],"staffing_note":"estimate"}],
+ "knowledge_areas":[{"name":"field","reason":"why relevant"}],
+ "team_roles":[{"category":"Engineering / technical, Other professional, Skilled trade, General labour, or Coordination","role":"role","people":"number or To be determined","phase":"phase","responsibilities":["task"],"why_needed":"why","estimate_confidence":"Low/Medium/High"}],
+ "team_summary":[{"category":"category","roles":"roles included","headcount":"estimate","basis":"basis"}],
+ "total_team_estimate":"estimated unique people",
+ "tools_resources":[{"name":"tool","purpose":"what it is for","access_note":"cost"}],
+ "constraints":[{"item":"constraint or missing information","status":"Provided fact, Assumption, or Needs clarification","impact":"how it affects project"}],
+ "first_experiment":{"action":"experiment","duration":"time","measure":"what to measure","success_signal":"learning"}
+}
+"""
+
+# 2. UPDATE YOUR VALID_ANALYSIS FUNCTION
+def valid_analysis(data):
+    if not isinstance(data, dict): return False
+    if data.get("request_type") not in {"project_challenge", "information_request", "employment_search", "unclear", "out_of_scope"}: return False
+    if data.get("request_type") != "project_challenge" and not is_nonempty_string(data.get("response_message", "")): return False
+    if not isinstance(data.get("needs_clarification"), bool): return False
+    
+    # Robust handling of clarifying questions
+    cleaned_questions = []
+    for q in data.get("clarifying_questions", []):
+        if isinstance(q, str):
+            cleaned_questions.append({"id": len(cleaned_questions)+1, "question": q, "target_section": "general"})
+        elif isinstance(q, dict) and "question" in q:
+            if "id" not in q: q["id"] = len(cleaned_questions)+1
+            if "target_section" not in q: q["target_section"] = "general"
+            cleaned_questions.append(q)
+        else:
+            return False
+    data["clarifying_questions"] = cleaned_questions
+
+    for key in ("restated", "desired_outcome", "total_team_estimate"):
+        if not isinstance(data.get(key), str): return False
+    for key in ("work_packages", "knowledge_areas", "team_roles", "team_summary", "tools_resources", "constraints"):
+        if not isinstance(data.get(key), list): return False
+    for item in data["work_packages"]:
+        if not isinstance(item, dict) or not all(isinstance(item.get(k), str) for k in ("name", "dependencies", "staffing_note")): return False
+        if not isinstance(item.get("tasks"), list) or not isinstance(item.get("skills_needed"), list): return False
+    for item in data["knowledge_areas"]:
+        if not isinstance(item, dict) or not all(is_nonempty_string(item.get(k)) for k in ("name", "reason")): return False
+    for item in data["team_roles"]:
+        if not isinstance(item, dict) or not all(isinstance(item.get(k), str) for k in ("category", "role", "people", "phase", "why_needed", "estimate_confidence")): return False
+        if not isinstance(item.get("responsibilities"), list): return False
+    for item in data["team_summary"]:
+        if not isinstance(item, dict) or not all(isinstance(item.get(k), str) for k in ("category", "roles", "headcount", "basis")): return False
+    for item in data["tools_resources"]:
+        if not isinstance(item, dict) or not all(isinstance(item.get(k), str) for k in ("name", "purpose", "access_note")): return False
+    for item in data["constraints"]:
+        if not isinstance(item, dict) or not all(isinstance(item.get(k), str) for k in ("item", "status", "impact")): return False
+    experiment = data.get("first_experiment")
+    if not isinstance(experiment, dict): return False
+    if experiment and data.get("request_type") == "project_challenge":
+        if not all(isinstance(experiment.get(k), str) for k in ("action", "duration", "measure", "success_signal")): return False
+    return True
+
+# 3. REPLACE YOUR RESULT_HTML
+RESULT_HTML = """
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Daraprax | Your Blueprint</title>
+""" + BASE_CSS + """
+<style>
+section { background: var(--card-bg); padding: 24px; border-radius: 16px; border: 1px solid var(--border-color); margin-bottom: 20px; box-shadow: var(--shadow); border-left: 6px solid var(--primary); }
+section:nth-child(even) { border-left-color: var(--green); }
+.card { border-bottom: 1px solid var(--border-color); padding: 16px 0; }
+.card:last-child { border-bottom: none; }
+.notice { background: #fffbeb; color: #92400e; padding: 16px; border-radius: 12px; border: 1px solid #fcd34d; margin-bottom: 20px; }
+[data-theme="dark"] .notice { background: #422006; color: #fcd34d; border-color: #b45309; }
+
+/* Sticker Placeholder Styling */
+.sticker { background: #eff6ff; color: #1e40af; border: 1px dashed #93c5fd; padding: 15px; border-radius: 8px; margin: 10px 0; }
+[data-theme="dark"] .sticker { background: #172554; color: #93c5fd; border-color: #3b82f6; }
+.sticker-label { display: block; font-size: 0.9rem; margin-top: 10px; margin-bottom: 5px; font-weight: 600; }
+.sticker-input { width: 100%; padding: 8px; border-radius: 6px; border: 1px solid var(--border-color); background: var(--card-bg); color: var(--text-main); margin-bottom: 8px; }
+.btn-inline { background: var(--primary); color: white; border: none; padding: 8px 12px; border-radius: 6px; font-size: 0.85rem; cursor: pointer; font-weight: 600; }
+
+details { background: var(--bg-color); border: 1px solid var(--border-color); border-radius: 12px; padding: 16px; margin-bottom: 16px; }
+summary { font-weight: 600; font-size: 1.1rem; cursor: pointer; list-style: none; display: flex; align-items: center; gap: 8px; }
+summary::-webkit-details-marker { display: none; }
+summary::before { content: "▶"; font-size: 0.8rem; transition: transform 0.2s; color: var(--primary); }
+details[open] summary::before { transform: rotate(90deg); }
+details[open] { padding-bottom: 24px; }
+
+.action-buttons { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-top: 30px; }
+@media (max-width: 600px) { .action-buttons { grid-template-columns: 1fr; } }
+.btn-primary { background: var(--primary); color: white; border: none; padding: 16px; font-size: 1rem; text-align: center; border-radius: 10px; font-weight: 600; cursor: pointer; }
+.btn-secondary { background: var(--card-bg); color: var(--text-main); border: 1px solid var(--border-color); padding: 16px; font-size: 1rem; text-align: center; border-radius: 10px; font-weight: 600; cursor: pointer; }
+.btn-secondary:hover { background: var(--bg-color); }
+.table-scroll { overflow-x: auto; margin-top: 10px; }
+table { width: 100%; border-collapse: collapse; min-width: 600px; }
+th, td { padding: 12px; text-align: left; border-bottom: 1px solid var(--border-color); font-size: 0.95rem; }
+th { background: var(--card-bg); font-weight: 600; }
+</style>
+</head>
+<body data-theme="light">
+<nav class="nav"><a href="/">← Back to Daraprax</a><button class="theme-toggle" onclick="toggleTheme()">🌓</button></nav>
+<h1 style="margin-bottom:20px;">🧭 Your Blueprint</h1>
+
+{% if demo %}<div class="notice"><strong>Fallback mode:</strong> The AI service did not return a usable analysis. Try again later.</div>{% endif %}
+
+{% if result.request_type != 'project_challenge' %}
+<section>
+    <h2>{{ type_title }}</h2>
+    <p style="margin-top:10px;">{{ result.response_message }}</p>
+</section>
+{% else %}
+
+<!-- THE MAIN FORM (We use HTML5 'form' attributes to link inputs below to this form) -->
+<form id="main-form" method="post" action="/continue">
+    <input type="hidden" name="problem" value="{{ original_problem }}">
+</form>
+
+<!-- TOP CLARIFICATION FORM -->
+{% if result.clarifying_questions and result.clarifying_questions|length > 0 %}
+<section class="notice">
+    <h2>Help us refine this blueprint</h2>
+    <p>We generated a draft below, but answering these questions will make it more accurate:</p>
+    <div style="margin-top:15px;">
+        {% for q in result.clarifying_questions %}
+        <label style="display:block; margin-bottom:5px; font-weight:600;">{{ loop.index }}. {{ q.question }}</label>
+        <input type="text" name="answer{{ q.id }}" form="main-form" style="width:100%; padding:10px; border-radius:8px; border:1px solid var(--border-color); margin-bottom:15px; background:var(--bg-color); color:var(--text-main);">
+        {% endfor %}
+        <button type="submit" form="main-form" class="btn-primary" style="width:100%;">Update Blueprint with details</button>
+    </div>
+</section>
+{% endif %}
+
+<!-- BLUEPRINT SECTIONS -->
+<section>
+    <h2>🎯 1. Core Challenge</h2>
+    <p style="margin-top:10px;">{{ result.restated }}</p>
+    <h3 style="margin-top:15px; font-size:1rem;">Desired Outcome</h3>
+    <p style="color:var(--text-muted);">{{ result.desired_outcome }}</p>
+</section>
+
+<section>
+    <h2>🛠️ 2. Work Packages</h2>
+    {% if result.work_packages %}
+        {% for item in result.work_packages %}
+        <div class="card">
+            <h3>{{ item.name }}</h3>
+            <ul style="margin: 10px 0 10px 20px;">{% for task in item.tasks %}<li>{{ task }}</li>{% endfor %}</ul>
+            <p style="font-size:0.9rem;"><strong>Skills:</strong> {{ item.skills_needed|join(', ') }}</p>
+            <p style="font-size:0.9rem; color:var(--text-muted);"><strong>Note:</strong> {{ item.staffing_note }}</p>
+        </div>
+        {% endfor %}
+    {% else %}
+        {% set qs = result.clarifying_questions | selectattr("target_section", "equalto", "work_packages") | list %}
+        <div class="sticker">
+            <p>⚠️ This section is pending. We need a bit more info:</p>
+            {% for q in qs %}
+                <label class="sticker-label">{{ q.question }}</label>
+                <input type="text" name="answer{{ q.id }}" form="main-form" class="sticker-input">
+            {% endfor %}
+            <button type="submit" form="main-form" class="btn-inline">Update this section</button>
+        </div>
+    {% endif %}
+</section>
+
+<section>
+    <h2>🧠 3. Relevant Knowledge Areas</h2>
+    {% if result.knowledge_areas %}
+        <div style="display:flex; flex-wrap:wrap; gap:10px; margin-top:15px;">
+            {% for item in result.knowledge_areas %}
+            <div style="background:var(--bg-color); padding:10px 15px; border-radius:20px; border:1px solid var(--border-color); font-size:0.9rem;">
+                <strong>{{ item.name }}</strong>
+            </div>
+            {% endfor %}
+        </div>
+    {% else %}
+        <div class="sticker"><p>⚠️ Knowledge areas pending.</p></div>
+    {% endif %}
+</section>
+
+<section>
+    <h2>👥 4. Potential Team</h2>
+    {% if result.team_roles %}
+        {% for item in result.team_roles %}
+        <div class="card">
+            <h3>{{ item.role }}</h3>
+            <p style="font-size:0.9rem;"><strong>Category:</strong> {{ item.category }} · <strong>Phase:</strong> {{ item.phase }} · <strong>Staffing:</strong> {{ item.people }}</p>
+            <p style="margin-top:5px;">{{ item.why_needed }}</p>
+        </div>
+        {% endfor %}
+    {% else %}
+        {% set qs = result.clarifying_questions | selectattr("target_section", "equalto", "team_roles") | list %}
+        <div class="sticker">
+            <p>⚠️ We can't estimate the team size yet. Please answer:</p>
+            {% for q in qs %}
+                <label class="sticker-label">{{ q.question }}</label>
+                <input type="text" name="answer{{ q.id }}" form="main-form" class="sticker-input">
+            {% endfor %}
+            <button type="submit" form="main-form" class="btn-inline">Generate Team</button>
+        </div>
+    {% endif %}
+</section>
+
+<section>
+    <h2>📊 5. Team Summary & Details</h2>
+    {% if result.team_summary %}
+        <p style="font-size:0.9rem; color:var(--text-muted); margin-bottom:15px;">Overall unique-person estimate: <strong>{{ result.total_team_estimate }}</strong></p>
+        <div class="table-scroll">
+            <table>
+                <thead>
+                    <tr><th>Category</th><th>Roles</th><th>Headcount</th><th>Basis</th></tr>
+                </thead>
+                <tbody>
+                    {% for item in result.team_summary %}
+                    <tr><td>{{ item.category }}</td><td>{{ item.roles }}</td><td>{{ item.headcount }}</td><td>{{ item.basis }}</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    {% else %}
+        <div class="sticker"><p>⚠️ Team summary pending clarification.</p></div>
+    {% endif %}
+</section>
+
+<section>
+    <h2>🧰 6. Tools, Constraints & Details</h2>
+    <p style="margin-bottom:15px; color:var(--text-muted); font-size:0.9rem;">Click to expand the deeper structural details.</p>
+    
+    <details>
+        <summary>🔧 Tools & Resources</summary>
+        <div style="margin-top:15px;">
+            {% if result.tools_resources %}
+                {% for item in result.tools_resources %}
+                <div class="card">
+                    <strong>{{ item.name }}</strong>
+                    <p style="font-size:0.9rem;">{{ item.purpose }}</p>
+                    <p style="font-size:0.85rem; color:var(--text-muted);"><em>{{ item.access_note }}</em></p>
+                </div>
+                {% endfor %}
+            {% else %}
+                <div class="sticker"><p>⚠️ Resources pending.</p></div>
+            {% endif %}
+        </div>
+    </details>
+
+    <details>
+        <summary>⚠️ Constraints & Assumptions</summary>
+        <div style="margin-top:15px;">
+            {% if result.constraints %}
+                {% for item in result.constraints %}
+                <div class="card">
+                    <strong>{{ item.item }}</strong> <span style="font-size:0.8rem; background:var(--primary); color:white; padding:2px 8px; border-radius:10px; margin-left:8px;">{{ item.status }}</span>
+                    <p style="font-size:0.9rem; margin-top:5px;">{{ item.impact }}</p>
+                </div>
+                {% endfor %}
+            {% else %}
+                {% set qs = result.clarifying_questions | selectattr("target_section", "equalto", "constraints") | list %}
+                <div class="sticker">
+                    <p>⚠️ We need to know your constraints. Please answer:</p>
+                    {% for q in qs %}
+                        <label class="sticker-label">{{ q.question }}</label>
+                        <input type="text" name="answer{{ q.id }}" form="main-form" class="sticker-input">
+                    {% endfor %}
+                    <button type="submit" form="main-form" class="btn-inline">Update Constraints</button>
+                </div>
+            {% endif %}
+        </div>
+    </details>
+</section>
+
+<section>
+    <h2>🧪 7. First Measurable Experiment</h2>
+    {% if result.first_experiment and result.first_experiment.action %}
+        <p style="margin-top:10px;"><strong>Action:</strong> {{ result.first_experiment.action }}</p>
+        <p><strong>Duration:</strong> {{ result.first_experiment.duration }}</p>
+        <p><strong>Measure:</strong> {{ result.first_experiment.measure }}</p>
+        <p><strong>Success Signal:</strong> {{ result.first_experiment.success_signal }}</p>
+    {% else %}
+        {% set qs = result.clarifying_questions | selectattr("target_section", "equalto", "first_experiment") | list %}
+        <div class="sticker">
+            <p>⚠️ We need to know your timeline or budget to suggest an experiment:</p>
+            {% for q in qs %}
+                <label class="sticker-label">{{ q.question }}</label>
+                <input type="text" name="answer{{ q.id }}" form="main-form" class="sticker-input">
+            {% endfor %}
+            <button type="submit" form="main-form" class="btn-inline">Update Experiment</button>
+        </div>
+    {% endif %}
+</section>
+
+<!-- RESTORED REVIEW/FEEDBACK SECTION -->
+<section style="border-left-color: #b45309; background: var(--bg-color);">
+    <h2>📝 Review this Blueprint</h2>
+    <p class="small">This is an early prototype. Your feedback helps us train the system.</p>
+    <form method="post" action="/feedback" style="margin-top:15px;">
+        <input type="hidden" name="problem" value="{{ original_problem }}">
+        <input type="hidden" name="restated" value="{{ result.restated }}">
+        
+        <label for="decision" style="display:block; margin-bottom:5px; font-weight:600;">How useful is this plan?</label>
+        <select id="decision" name="decision" required style="width:100%; padding:10px; border-radius:8px; border:1px solid var(--border-color); margin-bottom:15px; background:var(--card-bg); color:var(--text-main);">
+            <option value="">Choose one...</option>
+            <option value="interested">This is great, I want to assemble a team</option>
+            <option value="clarify">I still need to clarify the problem</option>
+            <option value="unsuitable">This plan is not suitable for my problem</option>
+        </select>
+        
+        <label for="feedback" style="display:block; margin-bottom:5px; font-weight:600;">Any other comments?</label>
+        <textarea id="feedback" name="feedback" maxlength="1200" placeholder="What is useful, missing, or unrealistic?" style="width:100%; min-height:80px; padding:10px; border-radius:8px; border:1px solid var(--border-color); margin-bottom:15px; background:var(--card-bg); color:var(--text-main);"></textarea>
+        
+        <button type="submit" class="btn-secondary" style="width:100%; border-color: var(--primary); color: var(--primary);">Submit Review</button>
+    </form>
+</section>
+
+<div class="action-buttons">
+    <button class="btn-primary" onclick="alert('Database integration coming next. This will publish the challenge to the solver network.')">🚀 Publish as Live Challenge</button>
+    <button class="btn-secondary" onclick="window.location.href='/'">Analyze another problem</button>
 </div>
 {% endif %}
 
