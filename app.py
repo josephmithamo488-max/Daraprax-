@@ -140,9 +140,15 @@ def valid_analysis(data):
     for item in data["constraints"]:
         if not isinstance(item, dict) or not all(isinstance(item.get(k), str) for k in ("item", "status", "impact")):
             return False
+    
+    # THE FIX: Allow first_experiment to be empty if it's not a project challenge
     experiment = data.get("first_experiment")
-    if not isinstance(experiment, dict) or not all(isinstance(experiment.get(k), str) for k in ("action", "duration", "measure", "success_signal")):
+    if not isinstance(experiment, dict):
         return False
+    if experiment and data.get("request_type") == "project_challenge":
+        if not all(isinstance(experiment.get(k), str) for k in ("action", "duration", "measure", "success_signal")):
+            return False
+            
     return True
 
 def fallback_analysis(problem):
