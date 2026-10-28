@@ -1,8 +1,12 @@
 import json
 import os
 import re
+import uuid
 import requests
-from flask import Flask, render_template_string, request, session
+import psycopg2
+from psycopg2.extras import DictCursor
+from datetime import datetime
+from flask import Flask, render_template_string, request, session, redirect, url_for
 
 app = Flask(__name__)
 app.secret_key = os.getenv("FLASK_SECRET_KEY", "daraprax-prototype-session-key-change-before-production")
@@ -10,6 +14,7 @@ app.secret_key = os.getenv("FLASK_SECRET_KEY", "daraprax-prototype-session-key-c
 LLM_URL = os.getenv("LLM_URL", "https://api.groq.com/openai/v1/chat/completions")
 LLM_KEY = os.getenv("LLM_KEY")
 LLM_MODEL = os.getenv("LLM_MODEL", "openai/gpt-oss-120b")
+DATABASE_URL = os.getenv("DATABASE_URL")
 MAX_PROBLEM_LENGTH = 3000
 
 SYSTEM_PROMPT = r"""
@@ -24,7 +29,7 @@ CRITICAL INSTRUCTION FOR CLARIFYING QUESTIONS:
 If you need more information to fill a specific section, you MUST create a clarifying question and map it to that section using the exact target_section strings: "work_packages", "knowledge_areas", "team_roles", "team_summary", "tools_resources", "constraints", or "first_experiment". If it applies to the whole project, use "general".
 
 CRITICAL INSTRUCTION FOR SCALE:
-Adjust the team size and resources based on scale. A small market stall might need 1 person (e.g., a general labourer). A manufacturing plant might need 10 (e.g., 2x Mechanical Engineers, 1x Safety Officer, 4x Technicians).
+Adjust the team size and resources based on scale. A small market stall might need 1 person. A manufacturing plant might need 10.
 
 Return ONLY valid JSON with exactly these keys:
 {
@@ -45,6 +50,41 @@ Return ONLY valid JSON with exactly these keys:
 }
 """
 
+# ---------------------------------------------------------
+# DATABASE INITIALIZATION
+# ---------------------------------------------------------
+def init_db():
+    if not DATABASE_URL:
+        print("WARNING: DATABASE_URL is not set. Database features will fail.")
+        return
+    try:
+        conn = psycopg2.connect(DATABASE_URL)
+        conn.autocommit = True
+        with conn.cursor() as cur:
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS projects (
+                    id VARCHAR(32) PRIMARY KEY,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    original_words TEXT,
+                    clarifying_qa TEXT,
+                    ai_blueprint TEXT,
+                    consent_given BOOLEAN,
+                    expected_outcome TEXT,
+                    baseline TEXT,
+                    actual_outcome TEXT,
+                    experiment_logs TEXT
+                )
+            """)
+        conn.close()
+        print("Database initialized successfully.")
+    except Exception as e:
+        print(f"Database init error: {e}")
+
+init_db()
+
+# ---------------------------------------------------------
+# CSS STYLES
+# ---------------------------------------------------------
 BASE_CSS = """
 <style>
 :root {
@@ -89,20 +129,26 @@ body {
 .theme-toggle { background: var(--card-bg); border: 1px solid var(--border-color); color: var(--text-main); padding: 8px 12px; border-radius: 20px; cursor: pointer; font-size: 1.2rem; box-shadow: var(--shadow); }
 h1, h2, h3 { letter-spacing: -0.03em; line-height: 1.2; }
 a { color: var(--primary); text-decoration: none; }
-button { font-family: inherit; cursor: pointer; transition: all 0.2s; border-radius: 10px; font-weight: 600; }
+button { font-family: inherit; cursor: pointer; transition: all 0.2s; border-radius: 10px; font-weight: 600; border: none; }
 </style>
 """
 
-BRAND_MARK = """<a class="brand" href="/">
+BRAND_MARK = """
+<a class="brand" href="/">
 <svg viewBox="0 0 64 64"><path d="M10 12h24a20 20 0 0 1 0 40H18" fill="none" stroke="var(--primary)" stroke-width="7" stroke-linecap="round"/><path d="M25 39c2-12 12-20 25-21-1 13-9 24-22 25" fill="var(--green)"/><path d="M27 43l14-17" stroke="white" stroke-width="2.5" stroke-linecap="round"/><circle cx="15" cy="16" r="5" fill="var(--primary)"/><circle cx="16" cy="48" r="5" fill="var(--primary)"/></svg>
 <span class="brand-text"><strong>Daraprax</strong><small>Knowledge put into action.</small></span>
-</a>"""
+</a>
+"""
 
+# ---------------------------------------------------------
+# HOME HTML
+# ---------------------------------------------------------
 HOME_HTML = """
 <!doctype html>
 <html lang="en">
 <head>
-<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Daraprax | Knowledge put into action</title>
 """ + BASE_CSS + """
 <style>
@@ -137,7 +183,7 @@ input[type="checkbox"] { margin-top: 4px; }
         <h2>💡 I have a challenge</h2>
         <p>Describe a real-world problem and get a structured project blueprint.</p>
     </div>
-    <div class="option-card" onclick="alert('Solver dashboard coming soon! This is Priority 3.')">
+    <div class="option-card" onclick="alert('Solver dashboard coming soon!')">
         <h2>🧠 I want to solve problems</h2>
         <p>Join Daraprax to apply your skills to real-world challenges.</p>
     </div>
@@ -149,7 +195,7 @@ input[type="checkbox"] { margin-top: 4px; }
         <textarea name="problem" minlength="10" maxlength="3000" required placeholder="For example: My shop keeps running out of popular products, while slow-moving stock ties up money..."></textarea>
         <label class="consent-label">
             <input type="checkbox" name="consent" required>
-            <span>I understand this will be stored anonymously to help Daraprax learn, and I have not included confidential details.</span>
+            <span>I understand this will be stored to help Daraprax learn, and I have not included confidential details.</span>
         </label>
         <button type="submit" class="submit-btn">Build my next step →</button>
     </form>
@@ -171,15 +217,20 @@ function showForm() {
     document.getElementById('problem-form').style.display = 'block';
 }
 </script>
-</body></html>
+</body>
+</html>
 """
 
+# ---------------------------------------------------------
+# RESULT HTML (WORKSPACE)
+# ---------------------------------------------------------
 RESULT_HTML = """
 <!doctype html>
 <html lang="en">
 <head>
-<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Daraprax | Your Blueprint</title>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Daraprax | Project Workspace</title>
 """ + BASE_CSS + """
 <style>
 section { background: var(--card-bg); padding: 24px; border-radius: 16px; border: 1px solid var(--border-color); margin-bottom: 20px; box-shadow: var(--shadow); border-left: 6px solid var(--primary); }
@@ -189,6 +240,7 @@ section:nth-child(even) { border-left-color: var(--green); }
 .notice { background: #fffbeb; color: #92400e; padding: 16px; border-radius: 12px; border: 1px solid #fcd34d; margin-bottom: 20px; }
 [data-theme="dark"] .notice { background: #422006; color: #fcd34d; border-color: #b45309; }
 
+/* Sticker Placeholder Styling */
 .sticker { background: #eff6ff; color: #1e40af; border: 1px dashed #93c5fd; padding: 15px; border-radius: 8px; margin: 10px 0; }
 [data-theme="dark"] .sticker { background: #172554; color: #93c5fd; border-color: #3b82f6; }
 .sticker-label { display: block; font-size: 0.9rem; margin-top: 10px; margin-bottom: 5px; font-weight: 600; }
@@ -211,11 +263,20 @@ details[open] { padding-bottom: 24px; }
 table { width: 100%; border-collapse: collapse; min-width: 600px; }
 th, td { padding: 12px; text-align: left; border-bottom: 1px solid var(--border-color); font-size: 0.95rem; }
 th { background: var(--card-bg); font-weight: 600; }
+
+/* Experiment Workspace */
+.exp-section { border: 2px solid var(--primary); background: #f8fafc; border-radius: 16px; padding: 24px; margin-top: 40px; box-shadow: var(--shadow); }
+[data-theme="dark"] .exp-section { background: #1e293b; }
+.exp-input { width: 100%; padding: 12px; border-radius: 8px; border: 1px solid var(--border-color); background: var(--card-bg); color: var(--text-main); margin-bottom: 15px; font-family: inherit; resize: vertical; }
+.badge { display: inline-block; padding: 4px 10px; border-radius: 20px; font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; margin-left: 10px; vertical-align: middle; }
+.badge-self { background: #fef3c7; color: #92400e; border: 1px solid #fcd34d; }
 </style>
 </head>
 <body data-theme="light">
 <nav class="nav"><a href="/">← Back to Daraprax</a><button class="theme-toggle" onclick="toggleTheme()">🌓</button></nav>
-<h1 style="margin-bottom:20px;">🧭 Your Blueprint</h1>
+
+<h1 style="margin-bottom:20px;">🧭 Project Workspace</h1>
+<p style="color:var(--text-muted); margin-bottom:20px; font-size:0.9rem;"><strong>Private Link:</strong> Save this URL to return later. Do not share it unless you want others to see this record.</p>
 
 {% if demo %}<div class="notice"><strong>Fallback mode:</strong> The AI service did not return a usable analysis. Try again later.</div>{% endif %}
 
@@ -226,7 +287,7 @@ th { background: var(--card-bg); font-weight: 600; }
 </section>
 {% else %}
 
-<form id="main-form" method="post" action="/continue">
+<form id="main-form" method="post" action="/project/{{ project_id }}/update">
     <input type="hidden" name="problem" value="{{ original_problem }}">
 </form>
 
@@ -381,7 +442,7 @@ th { background: var(--card-bg); font-weight: 600; }
 </section>
 
 <section>
-    <h2>🧪 7. First Measurable Experiment</h2>
+    <h2>🧪 7. Proposed Experiment</h2>
     {% if result.first_experiment and result.first_experiment.action %}
         <p style="margin-top:10px;"><strong>Action:</strong> {{ result.first_experiment.action }}</p>
         <p><strong>Duration:</strong> {{ result.first_experiment.duration }}</p>
@@ -400,7 +461,30 @@ th { background: var(--card-bg); font-weight: 600; }
     {% endif %}
 </section>
 
-<section style="border-left-color: #b45309; background: var(--bg-color);">
+<!-- EXPERIMENT WORKSPACE -->
+<div class="exp-section">
+    <h2>📝 Experiment Workspace <span class="badge badge-self">Self-Reported</span></h2>
+    <p style="color:var(--text-muted); font-size:0.9rem; margin-bottom:20px;">The AI proposed the plan above. Now, record what you actually did. This data is saved permanently and is not generated by AI.</p>
+    
+    <form method="post" action="/project/{{ project_id }}/save_experiment">
+        <label style="font-weight:600; display:block; margin-bottom:5px;">1. Baseline (What was the starting condition?)</label>
+        <textarea name="baseline" class="exp-input" rows="3" placeholder="E.g., We currently use open-sun drying which takes 5 days and has 20% spoilage...">{{ exp.baseline or '' }}</textarea>
+
+        <label style="font-weight:600; display:block; margin-bottom:5px;">2. Expected Outcome (What did you think would happen?)</label>
+        <textarea name="expected_outcome" class="exp-input" rows="3" placeholder="E.g., The covered rack will reduce drying time to 3 days and spoilage to 5%...">{{ exp.expected_outcome or '' }}</textarea>
+
+        <label style="font-weight:600; display:block; margin-bottom:5px;">3. Process Log (What did you do and measure?)</label>
+        <textarea name="experiment_logs" class="exp-input" rows="5" placeholder="Day 1: Set up racks. Temp 28C, Humidity 60%.&#10;Day 2: Measured moisture...">{{ exp.experiment_logs or '' }}</textarea>
+
+        <label style="font-weight:600; display:block; margin-bottom:5px;">4. Actual Outcome (What actually happened?)</label>
+        <textarea name="actual_outcome" class="exp-input" rows="3" placeholder="E.g., Drying took 4 days (not 3). Spoilage was 8%...">{{ exp.actual_outcome or '' }}</textarea>
+
+        <button type="submit" class="btn-primary" style="width:100%;">Save Experiment Record</button>
+    </form>
+</div>
+
+<!-- REVIEW SECTION -->
+<section style="border-left-color: #b45309; background: var(--bg-color); margin-top: 30px;">
     <h2>📝 Review this Blueprint</h2>
     <p class="small">This is an early prototype. Your feedback helps us train the system.</p>
     <form method="post" action="/feedback" style="margin-top:15px;">
@@ -423,8 +507,8 @@ th { background: var(--card-bg); font-weight: 600; }
 </section>
 
 <div class="action-buttons">
-    <button class="btn-primary" onclick="alert('Database integration coming next. This will publish the challenge to the solver network.')">🚀 Publish as Live Challenge</button>
-    <button class="btn-secondary" onclick="window.location.href='/'">Analyze another problem</button>
+    <button class="btn-primary" onclick="alert('Public Knowledge Records coming in Phase 3.')">🌍 Publish to Knowledge Graph</button>
+    <button class="btn-secondary" onclick="window.location.href='/'">Create New Problem</button>
 </div>
 {% endif %}
 
@@ -440,11 +524,15 @@ if (localStorage.getItem('theme') === 'dark') {
     document.body.setAttribute('data-theme', 'dark');
 }
 </script>
-</body></html>
+</body>
+</html>
 """
 
 FEEDBACK_HTML = r"""<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Daraprax | Feedback preview</title><style>*{box-sizing:border-box}body{font-family:Arial,sans-serif;max-width:700px;margin:0 auto;padding:24px 18px;line-height:1.6;color:#18212b}h1{font-size:1.8rem}section{background:#f2f5f4;border-radius:10px;padding:16px;margin:14px 0}button{width:100%;padding:13px;margin-top:12px;background:#176b4d;color:white;border:0;border-radius:9px;font-size:1rem;font-weight:bold}p{overflow-wrap:anywhere}</style></head><body><a href="/">← Back to Daraprax</a><h1>Feedback preview</h1><section><p><strong>Selected response:</strong> {{ decision_label }}</p><p><strong>Problem:</strong> {{ problem }}</p><p><strong>Blueprint summary:</strong> {{ restated }}</p><p><strong>Your comment:</strong> {{ feedback or "No additional comment provided." }}</p></section><p>This is only a preview. Nothing has been saved or sent.</p><form method="get" action="/"><button type="submit">Return to Daraprax</button></form></body></html>"""
 
+# ---------------------------------------------------------
+# LOGIC & ROUTES
+# ---------------------------------------------------------
 def is_nonempty_string(value):
     return isinstance(value, str) and bool(value.strip())
 
@@ -566,21 +654,89 @@ def analyze():
         return "You must agree to the data storage terms.", 400
 
     result, demo = call_model(problem)
-    session["daraprax_original_problem"] = problem
-    return render_template_string(RESULT_HTML, result=result, demo=demo, original_problem=problem, type_title=classify_title(result["request_type"]))
+    project_id = uuid.uuid4().hex
+    
+    if DATABASE_URL:
+        try:
+            conn = psycopg2.connect(DATABASE_URL)
+            conn.autocommit = True
+            with conn.cursor() as cur:
+                cur.execute(
+                    "INSERT INTO projects (id, original_words, ai_blueprint, consent_given) VALUES (%s, %s, %s, %s)",
+                    (project_id, problem, json.dumps(result), consent)
+                )
+            conn.close()
+        except Exception as e:
+            print(f"DB Save Error: {e}")
 
-@app.route("/continue", methods=["POST"])
-def continue_analysis():
+    session["daraprax_original_problem"] = problem
+    return redirect(url_for("project_workspace", project_id=project_id))
+
+@app.route("/project/<project_id>", methods=["GET"])
+def project_workspace(project_id):
+    if not DATABASE_URL: return "Database not configured.", 500
+    conn = psycopg2.connect(DATABASE_URL)
+    with conn.cursor(cursor_factory=DictCursor) as cur:
+        cur.execute("SELECT * FROM projects WHERE id = %s", (project_id,))
+        row = cur.fetchone()
+    conn.close()
+    
+    if not row: return "Project not found.", 404
+    
+    result = json.loads(row['ai_blueprint']) if row['ai_blueprint'] else fallback_analysis("")
+    exp = {
+        "baseline": row['baseline'] or "",
+        "expected_outcome": row['expected_outcome'] or "",
+        "experiment_logs": row['experiment_logs'] or "",
+        "actual_outcome": row['actual_outcome'] or ""
+    }
+    
+    return render_template_string(RESULT_HTML, result=result, demo=False, original_problem=row['original_words'], type_title=classify_title(result["request_type"]), project_id=project_id, exp=exp)
+
+@app.route("/project/<project_id>/update", methods=["POST"])
+def update_blueprint(project_id):
     original = request.form.get("problem", "").strip()[:MAX_PROBLEM_LENGTH]
     additions = []
     for i in range(1, 6):
         answer = request.form.get(f"answer{i}", "").strip()[:500]
         if answer: additions.append(f"Clarification {i}: {answer}")
     combined = original
-    if additions:
-        combined += "\n\nUser-provided clarifications:\n" + "\n".join(additions)
+    if additions: combined += "\n\nUser clarifications:\n" + "\n".join(additions)
+    
     result, demo = call_model(combined)
-    return render_template_string(RESULT_HTML, result=result, demo=demo, original_problem=combined, type_title=classify_title(result["request_type"]))
+    
+    if DATABASE_URL:
+        try:
+            conn = psycopg2.connect(DATABASE_URL)
+            conn.autocommit = True
+            with conn.cursor() as cur:
+                cur.execute("UPDATE projects SET original_words = %s, clarifying_qa = %s, ai_blueprint = %s WHERE id = %s",
+                            (combined, "\n".join(additions), json.dumps(result), project_id))
+            conn.close()
+        except Exception as e:
+            print(f"DB Update Error: {e}")
+            
+    return redirect(url_for("project_workspace", project_id=project_id))
+
+@app.route("/project/<project_id>/save_experiment", methods=["POST"])
+def save_experiment(project_id):
+    baseline = request.form.get("baseline", "")
+    expected = request.form.get("expected_outcome", "")
+    logs = request.form.get("experiment_logs", "")
+    actual = request.form.get("actual_outcome", "")
+    
+    if DATABASE_URL:
+        try:
+            conn = psycopg2.connect(DATABASE_URL)
+            conn.autocommit = True
+            with conn.cursor() as cur:
+                cur.execute("UPDATE projects SET baseline = %s, expected_outcome = %s, experiment_logs = %s, actual_outcome = %s WHERE id = %s",
+                            (baseline, expected, logs, actual, project_id))
+            conn.close()
+        except Exception as e:
+            print(f"DB Exp Save Error: {e}")
+            
+    return redirect(url_for("project_workspace", project_id=project_id))
 
 @app.route("/feedback", methods=["POST"])
 def feedback():
@@ -594,4 +750,4 @@ def feedback():
     return render_template_string(FEEDBACK_HTML, problem=problem, restated=restated, feedback=feedback_text, decision_label=labels[decision])
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", "5000")), debug=False) 
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", "5000")), debug=False)
