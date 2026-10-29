@@ -11,12 +11,16 @@ from flask import Flask, render_template_string, request, session, redirect, url
 app = Flask(__name__)
 app.secret_key = os.getenv("FLASK_SECRET_KEY", "daraprax-prototype-session-key-change-before-production")
 
+# Configuration
 LLM_URL = os.getenv("LLM_URL", "https://api.groq.com/openai/v1/chat/completions")
 LLM_KEY = os.getenv("LLM_KEY")
 LLM_MODEL = os.getenv("LLM_MODEL", "openai/gpt-oss-120b")
 DATABASE_URL = os.getenv("DATABASE_URL")
 MAX_PROBLEM_LENGTH = 3000
 
+# ---------------------------------------------------------
+# SYSTEM PROMPT
+# ---------------------------------------------------------
 SYSTEM_PROMPT = r"""
 You are Daraprax, a problem-to-project translator. Its purpose is to help people put knowledge into action by connecting real-world problems with suitable human capabilities. AI facilitates the process; people do the work.
 
@@ -55,7 +59,7 @@ Return ONLY valid JSON with exactly these keys:
 # ---------------------------------------------------------
 def init_db():
     if not DATABASE_URL:
-        print("WARNING: DATABASE_URL is not set. Database features will fail.")
+        print("WARNING: DATABASE_URL is not set.")
         return
     try:
         conn = psycopg2.connect(DATABASE_URL)
@@ -83,7 +87,7 @@ def init_db():
 init_db()
 
 # ---------------------------------------------------------
-# CSS STYLES
+# CSS STYLES (BASE)
 # ---------------------------------------------------------
 BASE_CSS = """
 <style>
@@ -98,7 +102,6 @@ BASE_CSS = """
     --green: #16a34a;
     --shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.05), 0 8px 10px -6px rgba(0, 0, 0, 0.01);
 }
-
 [data-theme="dark"] {
     --bg-color: #0f172a;
     --text-main: #f8fafc;
@@ -110,8 +113,12 @@ BASE_CSS = """
     --green: #22c55e;
     --shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.3);
 }
-
-* { box-sizing: border-box; margin: 0; padding: 0; transition: background-color 0.3s, color 0.3s; }
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+    transition: background-color 0.3s, color 0.3s;
+}
 body {
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
     background-color: var(--bg-color);
@@ -121,22 +128,77 @@ body {
     max-width: 900px;
     margin: 0 auto;
 }
-.nav { display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px; }
-.brand { display: flex; align-items: center; gap: 12px; text-decoration: none; color: var(--text-main); }
-.brand svg { width: 40px; height: 40px; }
-.brand-text strong { display: block; font-size: 1.4rem; letter-spacing: -0.5px; line-height: 1.1; }
-.brand-text small { display: block; color: var(--green); font-weight: 600; font-size: 0.85rem; }
-.theme-toggle { background: var(--card-bg); border: 1px solid var(--border-color); color: var(--text-main); padding: 8px 12px; border-radius: 20px; cursor: pointer; font-size: 1.2rem; box-shadow: var(--shadow); }
-h1, h2, h3 { letter-spacing: -0.03em; line-height: 1.2; }
-a { color: var(--primary); text-decoration: none; }
-button { font-family: inherit; cursor: pointer; transition: all 0.2s; border-radius: 10px; font-weight: 600; border: none; }
+.nav {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 30px;
+}
+.brand {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    text-decoration: none;
+    color: var(--text-main);
+}
+.brand svg {
+    width: 40px;
+    height: 40px;
+}
+.brand-text strong {
+    display: block;
+    font-size: 1.4rem;
+    letter-spacing: -0.5px;
+    line-height: 1.1;
+}
+.brand-text small {
+    display: block;
+    color: var(--green);
+    font-weight: 600;
+    font-size: 0.85rem;
+}
+.theme-toggle {
+    background: var(--card-bg);
+    border: 1px solid var(--border-color);
+    color: var(--text-main);
+    padding: 8px 12px;
+    border-radius: 20px;
+    cursor: pointer;
+    font-size: 1.2rem;
+    box-shadow: var(--shadow);
+}
+h1, h2, h3 {
+    letter-spacing: -0.03em;
+    line-height: 1.2;
+}
+a {
+    color: var(--primary);
+    text-decoration: none;
+}
+button {
+    font-family: inherit;
+    cursor: pointer;
+    transition: all 0.2s;
+    border-radius: 10px;
+    font-weight: 600;
+    border: none;
+}
 </style>
 """
 
 BRAND_MARK = """
 <a class="brand" href="/">
-<svg viewBox="0 0 64 64"><path d="M10 12h24a20 20 0 0 1 0 40H18" fill="none" stroke="var(--primary)" stroke-width="7" stroke-linecap="round"/><path d="M25 39c2-12 12-20 25-21-1 13-9 24-22 25" fill="var(--green)"/><path d="M27 43l14-17" stroke="white" stroke-width="2.5" stroke-linecap="round"/><circle cx="15" cy="16" r="5" fill="var(--primary)"/><circle cx="16" cy="48" r="5" fill="var(--primary)"/></svg>
-<span class="brand-text"><strong>Daraprax</strong><small>Knowledge put into action.</small></span>
+    <svg viewBox="0 0 64 64">
+        <path d="M10 12h24a20 20 0 0 1 0 40H18" fill="none" stroke="var(--primary)" stroke-width="7" stroke-linecap="round"/>
+        <path d="M25 39c2-12 12-20 25-21-1 13-9 24-22 25" fill="var(--green)"/>
+        <path d="M27 43l14-17" stroke="white" stroke-width="2.5" stroke-linecap="round"/>
+        <circle cx="15" cy="16" r="5" fill="var(--primary)"/>
+        <circle cx="16" cy="48" r="5" fill="var(--primary)"/>
+    </svg>
+    <span class="brand-text">
+        <strong>Daraprax</strong>
+        <small>Knowledge put into action.</small>
+    </span>
 </a>
 """
 
@@ -152,26 +214,107 @@ HOME_HTML = """
 <title>Daraprax | Knowledge put into action</title>
 """ + BASE_CSS + """
 <style>
-.hero { text-align: center; padding: 40px 20px; background: linear-gradient(135deg, rgba(37,99,235,0.1), rgba(22,163,74,0.05)); border-radius: 24px; margin-bottom: 30px; border: 1px solid var(--border-color); }
-.hero h1 { font-size: clamp(2rem, 6vw, 3rem); margin-bottom: 16px; }
-.hero p { color: var(--text-muted); font-size: 1.1rem; max-width: 600px; margin: 0 auto; }
-.split-options { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 30px; }
-@media (max-width: 600px) { .split-options { grid-template-columns: 1fr; } }
-.option-card { background: var(--card-bg); padding: 30px; border-radius: 16px; border: 1px solid var(--border-color); box-shadow: var(--shadow); text-align: center; cursor: pointer; }
-.option-card:hover { border-color: var(--primary); transform: translateY(-2px); }
-.option-card h2 { font-size: 1.4rem; margin-bottom: 10px; }
-.option-card p { color: var(--text-muted); font-size: 0.95rem; }
-.form-container { display: none; background: var(--card-bg); padding: 30px; border-radius: 20px; border: 1px solid var(--border-color); box-shadow: var(--shadow); }
-textarea { width: 100%; min-height: 140px; padding: 16px; border-radius: 12px; border: 1px solid var(--border-color); background: var(--bg-color); color: var(--text-main); font-size: 1rem; font-family: inherit; margin-bottom: 15px; resize: vertical; }
-textarea:focus { outline: 2px solid var(--primary); }
-.submit-btn { width: 100%; background: var(--primary); color: white; border: none; padding: 16px; font-size: 1.1rem; }
-.submit-btn:hover { background: var(--primary-hover); }
-.consent-label { display: flex; align-items: flex-start; gap: 10px; font-size: 0.85rem; color: var(--text-muted); margin-bottom: 20px; }
-input[type="checkbox"] { margin-top: 4px; }
+.hero {
+    text-align: center;
+    padding: 40px 20px;
+    background: linear-gradient(135deg, rgba(37,99,235,0.1), rgba(22,163,74,0.05));
+    border-radius: 24px;
+    margin-bottom: 30px;
+    border: 1px solid var(--border-color);
+}
+.hero h1 {
+    font-size: clamp(2rem, 6vw, 3rem);
+    margin-bottom: 16px;
+}
+.hero p {
+    color: var(--text-muted);
+    font-size: 1.1rem;
+    max-width: 600px;
+    margin: 0 auto;
+}
+.split-options {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+    margin-bottom: 30px;
+}
+@media (max-width: 600px) {
+    .split-options { grid-template-columns: 1fr; }
+}
+.option-card {
+    background: var(--card-bg);
+    padding: 30px;
+    border-radius: 16px;
+    border: 1px solid var(--border-color);
+    box-shadow: var(--shadow);
+    text-align: center;
+    cursor: pointer;
+}
+.option-card:hover {
+    border-color: var(--primary);
+    transform: translateY(-2px);
+}
+.option-card h2 {
+    font-size: 1.4rem;
+    margin-bottom: 10px;
+}
+.option-card p {
+    color: var(--text-muted);
+    font-size: 0.95rem;
+}
+.form-container {
+    display: none;
+    background: var(--card-bg);
+    padding: 30px;
+    border-radius: 20px;
+    border: 1px solid var(--border-color);
+    box-shadow: var(--shadow);
+}
+textarea {
+    width: 100%;
+    min-height: 140px;
+    padding: 16px;
+    border-radius: 12px;
+    border: 1px solid var(--border-color);
+    background: var(--bg-color);
+    color: var(--text-main);
+    font-size: 1rem;
+    font-family: inherit;
+    margin-bottom: 15px;
+    resize: vertical;
+}
+textarea:focus {
+    outline: 2px solid var(--primary);
+}
+.submit-btn {
+    width: 100%;
+    background: var(--primary);
+    color: white;
+    padding: 16px;
+    font-size: 1.1rem;
+}
+.submit-btn:hover {
+    background: var(--primary-hover);
+}
+.consent-label {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    font-size: 0.85rem;
+    color: var(--text-muted);
+    margin-bottom: 20px;
+}
+input[type="checkbox"] {
+    margin-top: 4px;
+}
 </style>
 </head>
 <body data-theme="light">
-<nav class="nav">""" + BRAND_MARK + """<button class="theme-toggle" onclick="toggleTheme()">🌓</button></nav>
+
+<nav class="nav">
+    """ + BRAND_MARK + """
+    <button class="theme-toggle" onclick="toggleTheme()">🌓</button>
+</nav>
 
 <div class="hero">
     <h1>Turn real problems into practical plans.</h1>
@@ -222,7 +365,7 @@ function showForm() {
 """
 
 # ---------------------------------------------------------
-# RESULT HTML (WORKSPACE)
+# RESULT HTML (PROJECT WORKSPACE)
 # ---------------------------------------------------------
 RESULT_HTML = """
 <!doctype html>
@@ -233,52 +376,186 @@ RESULT_HTML = """
 <title>Daraprax | Project Workspace</title>
 """ + BASE_CSS + """
 <style>
-section { background: var(--card-bg); padding: 24px; border-radius: 16px; border: 1px solid var(--border-color); margin-bottom: 20px; box-shadow: var(--shadow); border-left: 6px solid var(--primary); }
+section {
+    background: var(--card-bg);
+    padding: 24px;
+    border-radius: 16px;
+    border: 1px solid var(--border-color);
+    margin-bottom: 20px;
+    box-shadow: var(--shadow);
+    border-left: 6px solid var(--primary);
+}
 section:nth-child(even) { border-left-color: var(--green); }
-.card { border-bottom: 1px solid var(--border-color); padding: 16px 0; }
+.card {
+    border-bottom: 1px solid var(--border-color);
+    padding: 16px 0;
+}
 .card:last-child { border-bottom: none; }
-.notice { background: #fffbeb; color: #92400e; padding: 16px; border-radius: 12px; border: 1px solid #fcd34d; margin-bottom: 20px; }
-[data-theme="dark"] .notice { background: #422006; color: #fcd34d; border-color: #b45309; }
-
-/* Sticker Placeholder Styling */
-.sticker { background: #eff6ff; color: #1e40af; border: 1px dashed #93c5fd; padding: 15px; border-radius: 8px; margin: 10px 0; }
-[data-theme="dark"] .sticker { background: #172554; color: #93c5fd; border-color: #3b82f6; }
-.sticker-label { display: block; font-size: 0.9rem; margin-top: 10px; margin-bottom: 5px; font-weight: 600; }
-.sticker-input { width: 100%; padding: 8px; border-radius: 6px; border: 1px solid var(--border-color); background: var(--card-bg); color: var(--text-main); margin-bottom: 8px; }
-.btn-inline { background: var(--primary); color: white; border: none; padding: 8px 12px; border-radius: 6px; font-size: 0.85rem; cursor: pointer; font-weight: 600; }
-
-details { background: var(--bg-color); border: 1px solid var(--border-color); border-radius: 12px; padding: 16px; margin-bottom: 16px; }
-summary { font-weight: 600; font-size: 1.1rem; cursor: pointer; list-style: none; display: flex; align-items: center; gap: 8px; }
+.notice {
+    background: #fffbeb;
+    color: #92400e;
+    padding: 16px;
+    border-radius: 12px;
+    border: 1px solid #fcd34d;
+    margin-bottom: 20px;
+}
+[data-theme="dark"] .notice {
+    background: #422006;
+    color: #fcd34d;
+    border-color: #b45309;
+}
+.sticker {
+    background: #eff6ff;
+    color: #1e40af;
+    border: 1px dashed #93c5fd;
+    padding: 15px;
+    border-radius: 8px;
+    margin: 10px 0;
+}
+[data-theme="dark"] .sticker {
+    background: #172554;
+    color: #93c5fd;
+    border-color: #3b82f6;
+}
+.sticker-label {
+    display: block;
+    font-size: 0.9rem;
+    margin-top: 10px;
+    margin-bottom: 5px;
+    font-weight: 600;
+}
+.sticker-input {
+    width: 100%;
+    padding: 8px;
+    border-radius: 6px;
+    border: 1px solid var(--border-color);
+    background: var(--card-bg);
+    color: var(--text-main);
+    margin-bottom: 8px;
+}
+.btn-inline {
+    background: var(--primary);
+    color: white;
+    padding: 8px 12px;
+    border-radius: 6px;
+    font-size: 0.85rem;
+    font-weight: 600;
+}
+details {
+    background: var(--bg-color);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    padding: 16px;
+    margin-bottom: 16px;
+}
+summary {
+    font-weight: 600;
+    font-size: 1.1rem;
+    cursor: pointer;
+    list-style: none;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
 summary::-webkit-details-marker { display: none; }
-summary::before { content: "▶"; font-size: 0.8rem; transition: transform 0.2s; color: var(--primary); }
+summary::before {
+    content: "▶";
+    font-size: 0.8rem;
+    transition: transform 0.2s;
+    color: var(--primary);
+}
 details[open] summary::before { transform: rotate(90deg); }
 details[open] { padding-bottom: 24px; }
 
-.action-buttons { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-top: 30px; }
+.action-buttons {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 15px;
+    margin-top: 30px;
+}
 @media (max-width: 600px) { .action-buttons { grid-template-columns: 1fr; } }
-.btn-primary { background: var(--primary); color: white; border: none; padding: 16px; font-size: 1rem; text-align: center; border-radius: 10px; font-weight: 600; cursor: pointer; }
-.btn-secondary { background: var(--card-bg); color: var(--text-main); border: 1px solid var(--border-color); padding: 16px; font-size: 1rem; text-align: center; border-radius: 10px; font-weight: 600; cursor: pointer; }
+.btn-primary {
+    background: var(--primary);
+    color: white;
+    padding: 16px;
+    font-size: 1rem;
+    text-align: center;
+    border-radius: 10px;
+}
+.btn-secondary {
+    background: var(--card-bg);
+    color: var(--text-main);
+    border: 1px solid var(--border-color);
+    padding: 16px;
+    font-size: 1rem;
+    text-align: center;
+    border-radius: 10px;
+}
 .btn-secondary:hover { background: var(--bg-color); }
 .table-scroll { overflow-x: auto; margin-top: 10px; }
 table { width: 100%; border-collapse: collapse; min-width: 600px; }
-th, td { padding: 12px; text-align: left; border-bottom: 1px solid var(--border-color); font-size: 0.95rem; }
+th, td {
+    padding: 12px;
+    text-align: left;
+    border-bottom: 1px solid var(--border-color);
+    font-size: 0.95rem;
+}
 th { background: var(--card-bg); font-weight: 600; }
 
 /* Experiment Workspace */
-.exp-section { border: 2px solid var(--primary); background: #f8fafc; border-radius: 16px; padding: 24px; margin-top: 40px; box-shadow: var(--shadow); }
+.exp-section {
+    border: 2px solid var(--primary);
+    background: #f8fafc;
+    border-radius: 16px;
+    padding: 24px;
+    margin-top: 40px;
+    box-shadow: var(--shadow);
+}
 [data-theme="dark"] .exp-section { background: #1e293b; }
-.exp-input { width: 100%; padding: 12px; border-radius: 8px; border: 1px solid var(--border-color); background: var(--card-bg); color: var(--text-main); margin-bottom: 15px; font-family: inherit; resize: vertical; }
-.badge { display: inline-block; padding: 4px 10px; border-radius: 20px; font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; margin-left: 10px; vertical-align: middle; }
-.badge-self { background: #fef3c7; color: #92400e; border: 1px solid #fcd34d; }
+.exp-input {
+    width: 100%;
+    padding: 12px;
+    border-radius: 8px;
+    border: 1px solid var(--border-color);
+    background: var(--card-bg);
+    color: var(--text-main);
+    margin-bottom: 15px;
+    font-family: inherit;
+    resize: vertical;
+}
+.badge {
+    display: inline-block;
+    padding: 4px 10px;
+    border-radius: 20px;
+    font-size: 0.75rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-left: 10px;
+    vertical-align: middle;
+}
+.badge-self {
+    background: #fef3c7;
+    color: #92400e;
+    border: 1px solid #fcd34d;
+}
 </style>
 </head>
 <body data-theme="light">
-<nav class="nav"><a href="/">← Back to Daraprax</a><button class="theme-toggle" onclick="toggleTheme()">🌓</button></nav>
+
+<nav class="nav">
+    <a href="/">← Back to Daraprax</a>
+    <button class="theme-toggle" onclick="toggleTheme()">🌓</button>
+</nav>
 
 <h1 style="margin-bottom:20px;">🧭 Project Workspace</h1>
-<p style="color:var(--text-muted); margin-bottom:20px; font-size:0.9rem;"><strong>Private Link:</strong> Save this URL to return later. Do not share it unless you want others to see this record.</p>
+<p style="color:var(--text-muted); margin-bottom:20px; font-size:0.9rem;">
+    <strong>Private Link:</strong> Save this URL to return later. Do not share it unless you want others to see this record.
+</p>
 
-{% if demo %}<div class="notice"><strong>Fallback mode:</strong> The AI service did not return a usable analysis. Try again later.</div>{% endif %}
+{% if demo %}
+<div class="notice"><strong>Fallback mode:</strong> The AI service did not return a usable analysis. Try again later.</div>
+{% endif %}
 
 {% if result.request_type != 'project_challenge' %}
 <section>
@@ -318,7 +595,9 @@ th { background: var(--card-bg); font-weight: 600; }
         {% for item in result.work_packages %}
         <div class="card">
             <h3>{{ item.name }}</h3>
-            <ul style="margin: 10px 0 10px 20px;">{% for task in item.tasks %}<li>{{ task }}</li>{% endfor %}</ul>
+            <ul style="margin: 10px 0 10px 20px;">
+                {% for task in item.tasks %}<li>{{ task }}</li>{% endfor %}
+            </ul>
             <p style="font-size:0.9rem;"><strong>Skills:</strong> {{ item.skills_needed|join(', ') }}</p>
             <p style="font-size:0.9rem; color:var(--text-muted);"><strong>Note:</strong> {{ item.staffing_note }}</p>
         </div>
@@ -461,7 +740,6 @@ th { background: var(--card-bg); font-weight: 600; }
     {% endif %}
 </section>
 
-<!-- EXPERIMENT WORKSPACE -->
 <div class="exp-section">
     <h2>📝 Experiment Workspace <span class="badge badge-self">Self-Reported</span></h2>
     <p style="color:var(--text-muted); font-size:0.9rem; margin-bottom:20px;">The AI proposed the plan above. Now, record what you actually did. This data is saved permanently and is not generated by AI.</p>
@@ -483,7 +761,6 @@ th { background: var(--card-bg); font-weight: 600; }
     </form>
 </div>
 
-<!-- REVIEW SECTION -->
 <section style="border-left-color: #b45309; background: var(--bg-color); margin-top: 30px;">
     <h2>📝 Review this Blueprint</h2>
     <p class="small">This is an early prototype. Your feedback helps us train the system.</p>
@@ -528,10 +805,41 @@ if (localStorage.getItem('theme') === 'dark') {
 </html>
 """
 
-FEEDBACK_HTML = r"""<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Daraprax | Feedback preview</title><style>*{box-sizing:border-box}body{font-family:Arial,sans-serif;max-width:700px;margin:0 auto;padding:24px 18px;line-height:1.6;color:#18212b}h1{font-size:1.8rem}section{background:#f2f5f4;border-radius:10px;padding:16px;margin:14px 0}button{width:100%;padding:13px;margin-top:12px;background:#176b4d;color:white;border:0;border-radius:9px;font-size:1rem;font-weight:bold}p{overflow-wrap:anywhere}</style></head><body><a href="/">← Back to Daraprax</a><h1>Feedback preview</h1><section><p><strong>Selected response:</strong> {{ decision_label }}</p><p><strong>Problem:</strong> {{ problem }}</p><p><strong>Blueprint summary:</strong> {{ restated }}</p><p><strong>Your comment:</strong> {{ feedback or "No additional comment provided." }}</p></section><p>This is only a preview. Nothing has been saved or sent.</p><form method="get" action="/"><button type="submit">Return to Daraprax</button></form></body></html>"""
+FEEDBACK_HTML = """
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Daraprax | Feedback preview</title>
+<style>
+* { box-sizing: border-box; }
+body { font-family: Arial, sans-serif; max-width: 700px; margin: 0 auto; padding: 24px 18px; line-height: 1.6; color: #18212b; }
+h1 { font-size: 1.8rem; }
+section { background: #f2f5f4; border-radius: 10px; padding: 16px; margin: 14px 0; }
+button { width: 100%; padding: 13px; margin-top: 12px; background: #176b4d; color: white; border: 0; border-radius: 9px; font-size: 1rem; font-weight: bold; }
+p { overflow-wrap: anywhere; }
+</style>
+</head>
+<body>
+<a href="/">← Back to Daraprax</a>
+<h1>Feedback preview</h1>
+<section>
+    <p><strong>Selected response:</strong> {{ decision_label }}</p>
+    <p><strong>Problem:</strong> {{ problem }}</p>
+    <p><strong>Blueprint summary:</strong> {{ restated }}</p>
+    <p><strong>Your comment:</strong> {{ feedback or "No additional comment provided." }}</p>
+</section>
+<p>This is only a preview. Nothing has been saved or sent.</p>
+<form method="get" action="/">
+    <button type="submit">Return to Daraprax</button>
+</form>
+</body>
+</html>
+"""
 
 # ---------------------------------------------------------
-# LOGIC & ROUTES
+# LOGIC & HELPER FUNCTIONS
 # ---------------------------------------------------------
 def is_nonempty_string(value):
     return isinstance(value, str) and bool(value.strip())
@@ -558,6 +866,7 @@ def valid_analysis(data):
         if not isinstance(data.get(key), str): return False
     for key in ("work_packages", "knowledge_areas", "team_roles", "team_summary", "tools_resources", "constraints"):
         if not isinstance(data.get(key), list): return False
+        
     for item in data["work_packages"]:
         if not isinstance(item, dict) or not all(isinstance(item.get(k), str) for k in ("name", "dependencies", "staffing_note")): return False
         if not isinstance(item.get("tasks"), list) or not isinstance(item.get("skills_needed"), list): return False
@@ -572,6 +881,7 @@ def valid_analysis(data):
         if not isinstance(item, dict) or not all(isinstance(item.get(k), str) for k in ("name", "purpose", "access_note")): return False
     for item in data["constraints"]:
         if not isinstance(item, dict) or not all(isinstance(item.get(k), str) for k in ("item", "status", "impact")): return False
+        
     experiment = data.get("first_experiment")
     if not isinstance(experiment, dict): return False
     if experiment and data.get("request_type") == "project_challenge":
@@ -584,8 +894,15 @@ def fallback_analysis(problem):
         "response_message": "Daraprax could not complete the AI analysis just now. Please try again. If you retry, describe the real-world problem, the outcome you want, and any known limits such as budget or time.",
         "needs_clarification": True,
         "clarifying_questions": [{"id": 1, "question": "Could you describe the specific real-world problem and the outcome you want?", "target_section": "general"}],
-        "restated": "", "desired_outcome": "", "work_packages": [], "knowledge_areas": [], "team_roles": [], "team_summary": [],
-        "total_team_estimate": "To be determined", "tools_resources": [], "constraints": [],
+        "restated": "", 
+        "desired_outcome": "", 
+        "work_packages": [], 
+        "knowledge_areas": [], 
+        "team_roles": [], 
+        "team_summary": [],
+        "total_team_estimate": "To be determined", 
+        "tools_resources": [], 
+        "constraints": [],
         "first_experiment": {"action": "", "duration": "", "measure": "", "success_signal": ""}
     }
 
@@ -611,8 +928,10 @@ def call_model(problem):
         )
         response.raise_for_status()
         content = response.json()["choices"][0]["message"]["content"].strip()
+        
         if content.startswith("```"):
             content = re.sub(r"\A```(?:json)?\s*|\s*```\Z", "", content, flags=re.IGNORECASE).strip()
+            
         try:
             data = json.loads(content)
         except json.JSONDecodeError:
@@ -621,9 +940,11 @@ def call_model(problem):
                 print("Daraprax error: AI response did not contain valid JSON.")
                 return fallback_analysis(problem), True
             data = json.loads(match.group(0))
+            
         if not valid_analysis(data):
             print("Daraprax error: AI returned JSON that failed validation.")
             return fallback_analysis(problem), True
+            
         return data, False
     except Exception as exc:
         print(f"Daraprax API error: {type(exc).__name__}: {exc}")
@@ -638,6 +959,9 @@ def classify_title(request_type):
         "project_challenge": "Project challenge",
     }.get(request_type, "Next step")
 
+# ---------------------------------------------------------
+# ROUTES
+# ---------------------------------------------------------
 @app.route("/", methods=["GET"])
 def home():
     return render_template_string(HOME_HTML)
@@ -674,14 +998,17 @@ def analyze():
 
 @app.route("/project/<project_id>", methods=["GET"])
 def project_workspace(project_id):
-    if not DATABASE_URL: return "Database not configured.", 500
+    if not DATABASE_URL: 
+        return "Database not configured.", 500
+        
     conn = psycopg2.connect(DATABASE_URL)
     with conn.cursor(cursor_factory=DictCursor) as cur:
         cur.execute("SELECT * FROM projects WHERE id = %s", (project_id,))
         row = cur.fetchone()
     conn.close()
     
-    if not row: return "Project not found.", 404
+    if not row: 
+        return "Project not found.", 404
     
     result = json.loads(row['ai_blueprint']) if row['ai_blueprint'] else fallback_analysis("")
     exp = {
@@ -691,7 +1018,15 @@ def project_workspace(project_id):
         "actual_outcome": row['actual_outcome'] or ""
     }
     
-    return render_template_string(RESULT_HTML, result=result, demo=False, original_problem=row['original_words'], type_title=classify_title(result["request_type"]), project_id=project_id, exp=exp)
+    return render_template_string(
+        RESULT_HTML, 
+        result=result, 
+        demo=False, 
+        original_problem=row['original_words'], 
+        type_title=classify_title(result["request_type"]), 
+        project_id=project_id, 
+        exp=exp
+    )
 
 @app.route("/project/<project_id>/update", methods=["POST"])
 def update_blueprint(project_id):
@@ -699,9 +1034,12 @@ def update_blueprint(project_id):
     additions = []
     for i in range(1, 6):
         answer = request.form.get(f"answer{i}", "").strip()[:500]
-        if answer: additions.append(f"Clarification {i}: {answer}")
+        if answer: 
+            additions.append(f"Clarification {i}: {answer}")
+            
     combined = original
-    if additions: combined += "\n\nUser clarifications:\n" + "\n".join(additions)
+    if additions: 
+        combined += "\n\nUser clarifications:\n" + "\n".join(additions)
     
     result, demo = call_model(combined)
     
@@ -710,8 +1048,10 @@ def update_blueprint(project_id):
             conn = psycopg2.connect(DATABASE_URL)
             conn.autocommit = True
             with conn.cursor() as cur:
-                cur.execute("UPDATE projects SET original_words = %s, clarifying_qa = %s, ai_blueprint = %s WHERE id = %s",
-                            (combined, "\n".join(additions), json.dumps(result), project_id))
+                cur.execute(
+                    "UPDATE projects SET original_words = %s, clarifying_qa = %s, ai_blueprint = %s WHERE id = %s",
+                    (combined, "\n".join(additions), json.dumps(result), project_id)
+                )
             conn.close()
         except Exception as e:
             print(f"DB Update Error: {e}")
@@ -730,8 +1070,10 @@ def save_experiment(project_id):
             conn = psycopg2.connect(DATABASE_URL)
             conn.autocommit = True
             with conn.cursor() as cur:
-                cur.execute("UPDATE projects SET baseline = %s, expected_outcome = %s, experiment_logs = %s, actual_outcome = %s WHERE id = %s",
-                            (baseline, expected, logs, actual, project_id))
+                cur.execute(
+                    "UPDATE projects SET baseline = %s, expected_outcome = %s, experiment_logs = %s, actual_outcome = %s WHERE id = %s",
+                    (baseline, expected, logs, actual, project_id)
+                )
             conn.close()
         except Exception as e:
             print(f"DB Exp Save Error: {e}")
@@ -744,10 +1086,18 @@ def feedback():
     restated = request.form.get("restated", "").strip()[:1000]
     feedback_text = request.form.get("feedback", "").strip()[:1200]
     decision = request.form.get("decision", "").strip()
+    
     labels = {"interested":"Interested in exploring a team", "clarify":"Needs clarification", "unsuitable":"Guidance not suitable"}
     if decision not in labels or len(problem) < 10:
         return "Please return to the analysis and choose a valid response.", 400
-    return render_template_string(FEEDBACK_HTML, problem=problem, restated=restated, feedback=feedback_text, decision_label=labels[decision])
+        
+    return render_template_string(
+        FEEDBACK_HTML, 
+        problem=problem, 
+        restated=restated, 
+        feedback=feedback_text, 
+        decision_label=labels[decision]
+    )
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", "5000")), debug=False)
